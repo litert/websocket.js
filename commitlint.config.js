@@ -12,6 +12,7 @@ module.exports = {
             'server',
             'common',
             'protocol',
+            'connection',
             'deps',
             'doc',
             'lint',

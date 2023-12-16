@@ -348,9 +348,6 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
                 }
             });
 
-        if (this._timeout) {
-
-            this._socket?.setTimeout(this._timeout);
-        }
+        this._socket?.setTimeout(this._timeout);
     }
 }
