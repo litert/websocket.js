@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Angus.Fenying <fenying@litert.org>
+ * Copyright 2024 Angus.Fenying <fenying@litert.org>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -166,7 +166,7 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
         const maskKey = this._maskKey === true ? _.createRandomMaskKey() : (this._maskKey || null);
 
         this._socket!.write(this._encoder.createHeader(
-            D.EOpcode.BINARY,
+            D.EOpcode.TEXT,
             Buffer.byteLength(data),
             maskKey
         ));
