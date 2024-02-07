@@ -17,4 +17,6 @@
 export * from './Errors';
 export * from './Server';
 export * from './Client';
+export * from './SimpleMessage';
+export * from './MessageReadStream';
 export * from './Decl';
