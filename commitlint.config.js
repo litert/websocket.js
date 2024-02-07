@@ -13,6 +13,7 @@ module.exports = {
             'common',
             'protocol',
             'connection',
+            'encoding',
             'deps',
             'doc',
             'lint',

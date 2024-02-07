@@ -15,12 +15,13 @@
  */
 
 import * as D from './Decl';
+import * as E from './Errors';
 import { mask } from './MaskFn';
 
 export class WsFrameEncoder {
 
     public constructor(
-        public maxFrameSize: number = D.DEFAULT_MAX_FRAME_SIZE
+        public maxMessageSize: number = D.DEFAULT_MAX_MESSAGE_SIZE
     ) {}
 
     public readonly mask = mask;
@@ -63,7 +64,7 @@ export class WsFrameEncoder {
 
         if ((maskKey?.length ?? 4) !== 4) {
 
-            throw new Error('Invalid mask key');
+            throw new E.E_INVALID_CONFIG({ value: maskKey, field: 'maskKey' });
         }
 
         const MASKED_BITS = maskKey ? 0b1000_0000 : 0;
@@ -87,7 +88,7 @@ export class WsFrameEncoder {
                 break;
             }
             default:
-                throw new Error('Invalid payload size');
+                throw new E.E_INVALID_PROTOCOL('Invalid size for payload', { payloadSize });
         }
 
         if (maskKey) {

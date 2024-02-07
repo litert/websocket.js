@@ -27,7 +27,8 @@ class WsServer implements D.IServer {
 
     public constructor(
         private _timeout: number,
-        public readonly liteFrameMode: boolean,
+        private _maxMessageSize: number,
+        public readonly frameReceiveMode: D.EFrameReceiveMode,
     ) {}
 
     public get timeout(): number {
@@ -39,10 +40,25 @@ class WsServer implements D.IServer {
 
         if (!Number.isSafeInteger(v) || v < 0) {
 
-            throw new E.E_TIMEOUT();
+            throw new E.E_INVALID_CONFIG({ value: v, field: 'timeout' });
         }
 
         this._timeout = v;
+    }
+
+    public get maxMessageSize(): number {
+
+        return this._maxMessageSize;
+    }
+
+    public set maxMessageSize(v: number) {
+
+        if (!Number.isSafeInteger(v) || v < 0) {
+
+            throw new E.E_INVALID_CONFIG({ value: v, field: 'maxMessageSize' });
+        }
+
+        this._maxMessageSize = v;
     }
 
     public isWebSocketRequest(req: Http.IncomingMessage): boolean {
@@ -93,8 +109,9 @@ class WsServer implements D.IServer {
         return new WsServerConnection(
             opts.socket,
             opts.socket instanceof TLSSocket,
-            this._timeout,
-            this.liteFrameMode,
+            opts.timeout ?? this._timeout,
+            this.frameReceiveMode,
+            this.maxMessageSize,
         );
     }
 
@@ -122,9 +139,13 @@ class WsServer implements D.IServer {
     }
 }
 
-export type IWsServerOptions = Partial<Pick<D.IServer, 'timeout' | 'liteFrameMode'>>;
+export type IWsServerOptions = Partial<Pick<D.IServer, 'timeout' | 'frameReceiveMode' | 'maxMessageSize'>>;
 
 export function createServer(opts: IWsServerOptions = {}): D.IServer {
 
-    return new WsServer(opts.timeout ?? D.DEFAULT_TIMEOUT, !!opts.liteFrameMode);
+    return new WsServer(
+        opts.timeout ?? D.DEFAULT_TIMEOUT,
+        opts.maxMessageSize ?? D.DEFAULT_MAX_MESSAGE_SIZE,
+        opts.frameReceiveMode ?? D.EFrameReceiveMode.STANDARD,
+    );
 }

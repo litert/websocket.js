@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-import * as D from './Decl';
-import * as E from './Errors';
-import { mask } from './MaskFn';
+import * as D from '../Decl';
+import * as E from '../Errors';
+import { mask } from '../MaskFn';
+import { WsMessageReadStream } from '../MessageReadStream';
 
 interface IChunkHeader {
 
@@ -24,6 +25,11 @@ interface IChunkHeader {
      * The payload of each chunk.
      */
     opcode: D.EOpcode;
+
+    /**
+     * Is this the last chunk of a frame?
+     */
+    fin: boolean;
 
     /**
      * The payload of each chunk.
@@ -42,7 +48,7 @@ enum EState {
     READING_PAYLOAD,
 }
 
-export class WsLiteDecoder {
+export class WsStandardDecoder implements D.IDecoder {
 
     /**
      * The current state of the decoder.
@@ -70,24 +76,44 @@ export class WsLiteDecoder {
     private _chunkHeader: IChunkHeader | null = null;
 
     /**
+     * The reader for a whole frame.
+     */
+    private _reader: WsMessageReadStream | null = null;
+
+    /**
      * How many bytes have been read from current chunk.
      */
     private _chunkFilled: number = 0;
 
-    private _chunks: Buffer[] = [];
+    /**
+     * How many bytes have been read into the reader stream.
+     */
+    private _frameTotal: number = 0;
 
     public constructor(
-        public maxFrameSize: number = D.DEFAULT_MAX_FRAME_SIZE,
+        public readonly maxMessageSize: number,
     ) {}
 
-    public reset(): void {
+    protected _softReset(): void {
 
         this._state = EState.READING_HEADER_FIRST_2_BYTES;
         this._hdrBufFilled = 0;
         this._hdrSize = 0;
         this._chunkHeader = null;
         this._chunkFilled = 0;
-        this._chunks = [];
+    }
+
+    public reset(): void {
+
+        this._softReset();
+
+        this._frameTotal = 0;
+
+        if (this._reader) {
+
+            this._reader.destroy(new E.E_FRAME_ABORTED());
+            this._reader = null;
+        }
     }
 
     private _calcFrameHeaderSize(headerByte1: number, headerByte2: number): number {
@@ -120,12 +146,6 @@ export class WsLiteDecoder {
         const headerByte2 = bytes[1];
 
         const fin = (headerByte1 & 0b1000_0000) === 0b1000_0000;
-
-        if (!fin) {
-
-            throw new E.E_FRAME_BROKEN();
-        }
-
         const opcode = headerByte1 & 0b0000_1111;
         const masked = (headerByte2 & 0b1000_0000) === 0b1000_0000;
         const chunkSize = headerByte2 & 0b0111_1111;
@@ -136,9 +156,26 @@ export class WsLiteDecoder {
         }
 
         this._chunkHeader = {
+            fin,
             opcode,
             length: chunkSize,
         };
+
+        if (this._chunkHeader.opcode !== D.EOpcode.CONTINUATION) {
+
+            this._reader = new WsMessageReadStream(opcode);
+        }
+        else if (!this._reader) {
+
+            throw new E.E_INVALID_PROTOCOL('Missing initial frame');
+        }
+
+        this._frameTotal += this._chunkHeader.length;
+
+        if (this._frameTotal > this.maxMessageSize) {
+
+            throw new E.E_MESSAGE_TOO_LARGE();
+        }
 
         let offset = 2;
 
@@ -151,19 +188,17 @@ export class WsLiteDecoder {
 
             if (bytes.readUInt16BE(offset) & 0b1111_1111_1110_0000) { // check if it's safe for javascript integer.
 
-                throw new E.E_FRAME_TOO_LARGE();
+                throw new E.E_MESSAGE_TOO_LARGE();
             }
 
             this._chunkHeader.length = bytes.readUInt32BE(offset) * 0x1_0000_0000 + bytes.readUInt32BE(offset + 4);
             offset += 8;
         }
 
-        if (this.maxFrameSize < this._chunkHeader.length) {
+        if (this.maxMessageSize < this._chunkHeader.length) {
 
-            throw new E.E_FRAME_TOO_LARGE();
+            throw new E.E_MESSAGE_TOO_LARGE();
         }
-
-        this._chunks = [];
 
         if (masked) {
 
@@ -171,11 +206,11 @@ export class WsLiteDecoder {
         }
     }
 
-    public decode(buf: Buffer): D.ILiteFrame[] {
+    public decode(buf: Buffer): D.IMessageReadStream[] {
 
         let offset = 0;
 
-        const ret: D.ILiteFrame[] = [];
+        const ret: D.IMessageReadStream[] = [];
 
         while (offset < buf.byteLength) {
 
@@ -208,7 +243,20 @@ export class WsLiteDecoder {
 
                         this._setupChunk(this._bdrBuf);
 
-                        this._state = EState.READING_PAYLOAD;
+                        ret.push(this._reader!);
+
+                        if (!this._chunkHeader!.length) {
+
+                            this._reader!.push(null);
+
+                            this._reader = null;
+                            this._frameTotal = 0;
+                            this._state = EState.READING_HEADER_FIRST_2_BYTES;
+                        }
+                        else {
+
+                            this._state = EState.READING_PAYLOAD;
+                        }
                     }
 
                     break;
@@ -223,7 +271,20 @@ export class WsLiteDecoder {
 
                         this._setupChunk(this._bdrBuf);
 
-                        this._state = EState.READING_PAYLOAD;
+                        ret.push(this._reader!);
+
+                        if (!this._chunkHeader!.length) {
+
+                            this._reader!.push(null);
+
+                            this._reader = null;
+                            this._frameTotal = 0;
+                            this._state = EState.READING_HEADER_FIRST_2_BYTES;
+                        }
+                        else {
+
+                            this._state = EState.READING_PAYLOAD;
+                        }
                     }
                     else {
 
@@ -249,16 +310,19 @@ export class WsLiteDecoder {
 
                         // this._chunkFilled += chunkRest; // needn't to update this._chunkFilled
 
-                        this._chunks.push(chunk);
+                        this._reader!.push(chunk);
 
                         offset += chunkRest;
 
-                        ret.push({
-                            opcode: this._chunkHeader!.opcode,
-                            data: this._chunks,
-                        });
+                        if (this._chunkHeader!.fin) { // is frame finished?
 
-                        this.reset();
+                            this._reader!.push(null);
+
+                            this._reader = null;
+                            this._frameTotal = 0;
+                        }
+
+                        this._softReset();
                     }
                     else {
 
@@ -269,7 +333,7 @@ export class WsLiteDecoder {
                             mask(chunk, this._chunkHeader!.maskKey, this._chunkFilled);
                         }
 
-                        this._chunks.push(chunk);
+                        this._reader!.push(chunk);
 
                         this._chunkFilled += bufRest;
 

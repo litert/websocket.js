@@ -36,36 +36,36 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
     ws.on('error', (e) => {
         console.error(e);
     });
-    ws.on('frame', (frame) => {
+    ws.on('message', (msg) => {
 
-        if ('data' in frame) {
+        if (msg.mode !== $WS.EFrameReceiveMode.STANDARD) {
 
             // lite frame mode
 
-            switch (frame.opcode) {
+            switch (msg.opcode) {
                 case $WS.EOpcode.CLOSE:
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[frame.opcode]}]: code = ${Buffer.concat(frame.data).readUint16BE()}`);
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${msg.data.length > 0 ? Buffer.concat(msg.data).readUint16BE() : 'none'}`);
 
                     break;
                 default:
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[frame.opcode]}]: code = ${Buffer.concat(frame.data).toString()}`);
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).toString()}`);
             }
             return;
         }
 
-        switch (frame.opcode) {
+        switch (msg.opcode) {
             case $WS.EOpcode.CLOSE:
-                frame.toBuffer().then((buf) => {
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[frame.opcode]}]: code = ${buf.readUint16BE()}`);
+                msg.toBuffer().then((buf) => {
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${buf.length ? buf.readUint16BE()  : 'none' }`);
                 }, (e) => {
-                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[frame.opcode]}]:`, e);
+                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]:`, e);
                 });
                 break;
             default:
-                frame.toString().then((buf) => {
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[frame.opcode]}]:`, buf);
+                msg.toString().then((buf) => {
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]:`, buf);
                 }, (e) => {
-                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[frame.opcode]}]:`, e);
+                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]:`, e);
                 });
         }
     });
@@ -91,6 +91,13 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
 
             ws.writeBinary(Buffer.from('HELLO world!'));
         }
+        else if (count % 13 === 0 && ws.frameReceiveMode !== $WS.EFrameReceiveMode.LITE) {
+
+            const writer = ws.createMessageWriter($WS.EOpcode.TEXT);
+
+            writer.write('hi ');
+            writer.end();
+        }
         else {
 
             ws.writeText(`test count ${count}`);
@@ -105,7 +112,10 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
 
 const wsServer = $WS.createServer({
     'timeout': 150,
-    'liteFrameMode': process.argv.includes('--enable-lite-frame-mode'),
+    'frameReceiveMode': $WS.EFrameReceiveMode[
+        process.argv.find(i => i.startsWith('--frame-receive-mode'))
+            ?.slice('--frame-receive-mode='.length)?.toUpperCase() as 'STANDARD' ?? 'STANDARD'
+    ] ?? $WS.EFrameReceiveMode.STANDARD,
 });
 
 // listen for incoming connections

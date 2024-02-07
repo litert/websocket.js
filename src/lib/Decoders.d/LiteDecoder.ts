@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import * as D from './Decl';
-import * as E from './Errors';
-import { mask } from './MaskFn';
-import { WsFrameReadStream } from './FrameReader';
+import * as D from '../Decl';
+import * as E from '../Errors';
+import { mask } from '../MaskFn';
+import { WsSimpleMessage } from '../SimpleMessage';
 
 interface IChunkHeader {
 
@@ -25,11 +25,6 @@ interface IChunkHeader {
      * The payload of each chunk.
      */
     opcode: D.EOpcode;
-
-    /**
-     * Is this the last chunk of a frame?
-     */
-    fin: boolean;
 
     /**
      * The payload of each chunk.
@@ -48,7 +43,7 @@ enum EState {
     READING_PAYLOAD,
 }
 
-export class WsDecoder {
+export class WsLiteDecoder implements D.IDecoder {
 
     /**
      * The current state of the decoder.
@@ -76,44 +71,24 @@ export class WsDecoder {
     private _chunkHeader: IChunkHeader | null = null;
 
     /**
-     * The reader for a whole frame.
-     */
-    private _reader: WsFrameReadStream | null = null;
-
-    /**
      * How many bytes have been read from current chunk.
      */
     private _chunkFilled: number = 0;
 
-    /**
-     * How many bytes have been read into the reader stream.
-     */
-    private _frameTotal: number = 0;
+    private _chunks: Buffer[] = [];
 
     public constructor(
-        public maxFrameSize: number = D.DEFAULT_MAX_FRAME_SIZE,
+        public readonly maxMessageSize: number,
     ) {}
 
-    protected _softReset(): void {
+    public reset(): void {
 
         this._state = EState.READING_HEADER_FIRST_2_BYTES;
         this._hdrBufFilled = 0;
         this._hdrSize = 0;
         this._chunkHeader = null;
         this._chunkFilled = 0;
-    }
-
-    public reset(): void {
-
-        this._softReset();
-
-        this._frameTotal = 0;
-
-        if (this._reader) {
-
-            this._reader.destroy(new E.E_FRAME_ABORTED());
-            this._reader = null;
-        }
+        this._chunks = [];
     }
 
     private _calcFrameHeaderSize(headerByte1: number, headerByte2: number): number {
@@ -146,6 +121,12 @@ export class WsDecoder {
         const headerByte2 = bytes[1];
 
         const fin = (headerByte1 & 0b1000_0000) === 0b1000_0000;
+
+        if (!fin) {
+
+            throw new E.E_FRAME_BROKEN();
+        }
+
         const opcode = headerByte1 & 0b0000_1111;
         const masked = (headerByte2 & 0b1000_0000) === 0b1000_0000;
         const chunkSize = headerByte2 & 0b0111_1111;
@@ -156,26 +137,9 @@ export class WsDecoder {
         }
 
         this._chunkHeader = {
-            fin,
             opcode,
             length: chunkSize,
         };
-
-        if (this._chunkHeader.opcode !== D.EOpcode.CONTINUATION) {
-
-            this._reader = new WsFrameReadStream(opcode);
-        }
-        else if (!this._reader) {
-
-            throw new E.E_INVALID_PROTOCOL('Missing initial frame');
-        }
-
-        this._frameTotal += this._chunkHeader.length;
-
-        if (this._frameTotal > this.maxFrameSize) {
-
-            throw new E.E_FRAME_TOO_LARGE();
-        }
 
         let offset = 2;
 
@@ -188,17 +152,19 @@ export class WsDecoder {
 
             if (bytes.readUInt16BE(offset) & 0b1111_1111_1110_0000) { // check if it's safe for javascript integer.
 
-                throw new E.E_FRAME_TOO_LARGE();
+                throw new E.E_MESSAGE_TOO_LARGE();
             }
 
             this._chunkHeader.length = bytes.readUInt32BE(offset) * 0x1_0000_0000 + bytes.readUInt32BE(offset + 4);
             offset += 8;
         }
 
-        if (this.maxFrameSize < this._chunkHeader.length) {
+        if (this.maxMessageSize < this._chunkHeader.length) {
 
-            throw new E.E_FRAME_TOO_LARGE();
+            throw new E.E_MESSAGE_TOO_LARGE();
         }
+
+        this._chunks = [];
 
         if (masked) {
 
@@ -206,11 +172,11 @@ export class WsDecoder {
         }
     }
 
-    public decode(buf: Buffer): D.IFrameReadStream[] {
+    public decode(buf: Buffer): D.ISimpleMessage[] {
 
         let offset = 0;
 
-        const ret: D.IFrameReadStream[] = [];
+        const ret: D.ISimpleMessage[] = [];
 
         while (offset < buf.byteLength) {
 
@@ -243,8 +209,6 @@ export class WsDecoder {
 
                         this._setupChunk(this._bdrBuf);
 
-                        ret.push(this._reader!);
-
                         this._state = EState.READING_PAYLOAD;
                     }
 
@@ -259,8 +223,6 @@ export class WsDecoder {
                         }
 
                         this._setupChunk(this._bdrBuf);
-
-                        ret.push(this._reader!);
 
                         this._state = EState.READING_PAYLOAD;
                     }
@@ -286,21 +248,17 @@ export class WsDecoder {
                             mask(chunk, this._chunkHeader!.maskKey, this._chunkFilled);
                         }
 
-                        // this._chunkFilled += chunkRest; // needn't to update this._chunkFilled
-
-                        this._reader!.push(chunk);
+                        this._chunks.push(chunk);
 
                         offset += chunkRest;
 
-                        if (this._chunkHeader!.fin) { // is frame finished?
+                        ret.push(new WsSimpleMessage(
+                            D.EFrameReceiveMode.LITE,
+                            this._chunkHeader!.opcode,
+                            this._chunks,
+                        ));
 
-                            this._reader!.push(null);
-
-                            this._reader = null;
-                            this._frameTotal = 0;
-                        }
-
-                        this._softReset();
+                        this.reset();
                     }
                     else {
 
@@ -311,7 +269,7 @@ export class WsDecoder {
                             mask(chunk, this._chunkHeader!.maskKey, this._chunkFilled);
                         }
 
-                        this._reader!.push(chunk);
+                        this._chunks.push(chunk);
 
                         this._chunkFilled += bufRest;
 

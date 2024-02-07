@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-import type * as D from './Decl';
+import * as D from './Decl';
 import { Readable } from 'node:stream';
 import * as E from './Errors';
 
-export class WsFrameReadStream extends Readable implements D.IFrameReadStream {
+export class WsMessageReadStream extends Readable implements D.IMessageReadStream {
+
+    public readonly mode = D.EFrameReceiveMode.STANDARD;
 
     public constructor(
         public readonly opcode: D.EOpcode,

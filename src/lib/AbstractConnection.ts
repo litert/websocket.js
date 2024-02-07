@@ -18,19 +18,15 @@ import type * as $Net from 'node:net';
 import type * as TLS from 'node:tls';
 import * as $Events from 'node:events';
 import * as D from './Decl';
-import * as _ from './Utils';
 import * as E from './Errors';
-import { WsFrameEncoder } from './Encoder';
-import { WsDecoder } from './Decoder';
-import { WsLiteDecoder } from './LiteDecoder';
+import { getDecoder } from './Decoders.d';
+import { WsMessageWriteHelper, WsMessageWriter } from './MessageWriter';
 
 export abstract class AbstractWsConnection extends $Events.EventEmitter implements D.IWebSocket {
 
-    protected _maskKey: Buffer | boolean = false;
+    protected readonly _helper: WsMessageWriteHelper;
 
-    protected readonly _encoder = new WsFrameEncoder();
-
-    private readonly _decoder: WsDecoder | WsLiteDecoder;
+    private readonly _decoder: D.IDecoder;
 
     protected _socket: $Net.Socket | null;
 
@@ -39,14 +35,17 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
         public readonly isServer: boolean,
         public readonly tls: boolean,
         private _timeout: number,
-        public readonly liteFrameMode: boolean,
+        public readonly frameReceiveMode: D.EFrameReceiveMode = D.EFrameReceiveMode.STANDARD,
+        maxMessageSize?: number
     ) {
 
         super();
 
         this._socket = socket;
 
-        this._decoder = liteFrameMode ? new WsLiteDecoder() : new WsDecoder();
+        this._helper = new WsMessageWriteHelper(socket);
+
+        this._decoder = getDecoder(frameReceiveMode, maxMessageSize);
 
         this._setup();
     }
@@ -148,39 +147,39 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
             }
         }
 
-        const maskKey = this._maskKey === true ? _.createRandomMaskKey() : (this._maskKey || null);
+        const maskKey = this._helper.getMaskKey();
 
-        this._socket!.write(this._encoder.createHeader(
+        this._socket!.write(this._helper.encoder.createHeader(
             D.EOpcode.BINARY,
             len,
             maskKey
         ));
 
-        return this._writePayload(data, maskKey);
+        return this._helper.writePayload(data, maskKey);
     }
 
     public writeText(data: string): boolean {
 
         this._assertWritable();
 
-        const maskKey = this._maskKey === true ? _.createRandomMaskKey() : (this._maskKey || null);
+        const maskKey = this._helper.getMaskKey();
 
-        this._socket!.write(this._encoder.createHeader(
+        this._socket!.write(this._helper.encoder.createHeader(
             D.EOpcode.TEXT,
             Buffer.byteLength(data),
             maskKey
         ));
 
-        return this._writePayload(data, maskKey);
+        return this._helper.writePayload(data, maskKey);
     }
 
     public ping(data?: Buffer | string): boolean {
 
         this._assertWritable();
 
-        const maskKey = this._maskKey === true ? _.createRandomMaskKey() : (this._maskKey || null);
+        const maskKey = this._helper.getMaskKey();
 
-        const ret = this._socket!.write(this._encoder.createHeader(
+        const ret = this._socket!.write(this._helper.encoder.createHeader(
             D.EOpcode.PING,
             data ? Buffer.byteLength(data) : 0,
             maskKey
@@ -188,60 +187,19 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
 
         if (data) {
 
-            return this._writePayload(data, maskKey);
+            return this._helper.writePayload(data, maskKey);
         }
 
         return ret;
-    }
-
-    private _writePayload(data: Buffer | string | Array<Buffer | string>, maskKey: Buffer | null): boolean {
-
-        if (data instanceof Buffer) {
-
-            if (maskKey) {
-
-                this._encoder.mask(data, maskKey, 0);
-            }
-
-            return this._socket!.write(data);
-        }
-
-        if (Array.isArray(data)) {
-
-            if (maskKey) {
-
-                this._encoder.bulkMask(data, maskKey);
-            }
-
-            let ret: boolean = true;
-
-            for (const chunk of data) {
-
-                ret = this._socket!.write(chunk);
-            }
-
-            return ret;
-        }
-
-        if (maskKey) {
-
-            const buf = Buffer.from(data);
-
-            this._encoder.mask(buf, maskKey, 0);
-
-            return this._socket!.write(buf);
-        }
-
-        return this._socket!.write(data);
     }
 
     public pong(data?: Buffer | string): boolean {
 
         this._assertWritable();
 
-        const maskKey = this._maskKey === true ? _.createRandomMaskKey() : (this._maskKey || null);
+        const maskKey = this._helper.getMaskKey();
 
-        const ret = this._socket!.write(this._encoder.createHeader(
+        const ret = this._socket!.write(this._helper.encoder.createHeader(
             D.EOpcode.PONG,
             data ? Buffer.byteLength(data) : 0,
             maskKey
@@ -249,10 +207,15 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
 
         if (data) {
 
-            return this._writePayload(data, maskKey);
+            return this._helper.writePayload(data, maskKey);
         }
 
         return ret;
+    }
+
+    public createMessageWriter(opcode: D.EOpcode): D.IMessageWriter {
+
+        return new WsMessageWriter(opcode, this._socket, this._helper);
     }
 
     public end(reason: D.ECloseReason = D.ECloseReason.BYE): boolean {
@@ -267,10 +230,10 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
         reasonBuffer.writeUint16BE(reason, 0);
 
         const ret = this._socket.write(
-            this._encoder.createHeader(
+            this._helper.encoder.createHeader(
                 D.EOpcode.CLOSE,
                 2,
-                this._maskKey === true ? _.createRandomMaskKey() : (this._maskKey || null)
+                this._helper.getMaskKey()
             )
         );
 
@@ -321,7 +284,7 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
 
                     for (const i of result) {
 
-                        this.emit('frame', i);
+                        this.emit('message', i);
 
                         if (i.opcode === D.EOpcode.CLOSE) {
 
@@ -335,7 +298,7 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
 
                         this.end(D.ECloseReason.PROTOCOL_ERROR);
                     }
-                    else if (e instanceof E.E_FRAME_TOO_LARGE) {
+                    else if (e instanceof E.E_MESSAGE_TOO_LARGE) {
 
                         this.end(D.ECloseReason.MESSAGE_TOO_BIG);
                     }

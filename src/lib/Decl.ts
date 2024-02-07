@@ -93,15 +93,48 @@ export enum EOpcode {
     PONG = 0xA,
 }
 
-export interface ILiteFrame {
+export enum EFrameReceiveMode {
 
     /**
-     * The opcode of this frame.
+     * At this mode, when starts receiving a new message, a `IMessageReadStream` object will be
+     * created, and the `message` events of `IWebSocket` objects will be triggered with it.
+     */
+    STANDARD,
+
+    /**
+     * At this mode, all messages will be received as a `ISimpleMessage` object, without
+     * `CONTINUATION` frames supported and they will be refused.
+     *
+     * > **WARNING: Watch out the compatibility to the remote side.**
+     */
+    LITE,
+
+    /**
+     * At this mode, all messages will be received as a `ISimpleMessage` object, with `CONTINUATION`
+     * frames supported.
+     */
+    SIMPLE,
+}
+
+export interface IMessage {
+
+    /**
+     * The mode of receiving these frames.
+     */
+    mode: EFrameReceiveMode;
+
+    /**
+     * The type of this message.
      */
     opcode: EOpcode;
+}
+
+export interface ISimpleMessage extends IMessage {
+
+    mode: EFrameReceiveMode.LITE | EFrameReceiveMode.SIMPLE;
 
     /**
-     * The full data of this frame.
+     * The full data of this message.
      */
     data: Buffer[];
 }
@@ -119,14 +152,21 @@ export interface IServer {
     timeout: number;
 
     /**
-     * Set to `true` to refuse receiving the CONTINUATION frames.
+     * The maximum size of each message body.
      *
-     * > Under the lite frame mode, the `frame` events of `IWebSocket` objects will be triggered with `Buffer[]`
-     * type data, instead of a `IFrameReadStream` object.
+     * > Changing this value will not affect the existing connections.
      *
-     * @default false
+     * @default 67108864 (64 MiB)
+     * @see DEFAULT_MAX_MESSAGE_SIZE
      */
-    readonly liteFrameMode: boolean;
+    maxMessageSize: number;
+
+    /**
+     * The mode of receiving frames.
+     *
+     * @default EFrameReceiveMode.STANDARD
+     */
+    readonly frameReceiveMode: EFrameReceiveMode;
 
     /**
      * Accept the websocket request.
@@ -183,7 +223,7 @@ export interface IAcceptOptions {
     'headers'?: Http.OutgoingHttpHeaders;
 
     /**
-     * The timeout for the websocket connection.
+     * The timeout for the new websocket connection.
      */
     'timeout'?: number;
 
@@ -230,27 +270,75 @@ export interface IWebSocketHandshakeControl {
     reject(opts: IRejectOptions): void;
 }
 
-export interface IFrameReadStream extends Readable {
+export interface IMessageReadStream extends Readable, IMessage {
+
+    readonly mode: EFrameReceiveMode.STANDARD;
 
     /**
-     * The opcode of this frame.
+     * The opcode of this message.
      */
     readonly opcode: EOpcode;
 
     /**
-     * Read all data in this frame as a string.
+     * Read all data in this message as a string.
      */
     toString(): Promise<string>;
 
     /**
-     * Read all data in this frame as a single buffer.
+     * Read all data in this message as a single buffer.
      */
     toBuffer(): Promise<Buffer>;
 
     /**
-     * Read all data in this frame as an array of buffers, without copying data.
+     * Read all data in this message as an array of buffers, without copying data.
      */
     toBufferArray(): Promise<Buffer[]>;
+}
+
+export interface IMessageWriter {
+
+    /**
+     * The type of this message.
+     */
+    readonly opcode: EOpcode;
+
+    /**
+     * Write a frame of the message.
+     *
+     * > The frame will be written into a buffer, and the previous frame written into this writer
+     * > will be sent out.
+     * > That's to say, the last one frame is always buffered, and it will not be sent out until
+     * > `end()` method is called.
+     * > This is for the controlling of `FIN` bit of the frame.
+     *
+     * @param frame The frame to write.
+     */
+    write(frame: string | Buffer): boolean;
+
+    /**
+     * Finish writing the message.
+     *
+     * This method is going to send out the last frame of the message, which is sent with `FIN` bit
+     * set to `1`.
+     *
+     * > If the parameter `frame` is provided, the `write()` method will be called with it before
+     * > sending out the last frame with `FIN` bit set to `1`.
+     *
+     * @param frame  [Optional] The last frame of the message.
+     */
+    end(frame?: string | Buffer): boolean;
+}
+
+export interface IDecoder {
+
+    /**
+     * The maximum size of a message.
+     */
+    readonly maxMessageSize: number;
+
+    decode(chunk: Buffer): Array<IMessageReadStream | IMessage>;
+
+    reset(): void;
 }
 
 export interface IWebSocket {
@@ -261,12 +349,11 @@ export interface IWebSocket {
     readonly connected: boolean;
 
     /**
-     * Set to `true` to refuse receiving the CONTINUATION frames.
+     * The mode of receiving frames.
      *
-     * > Under the lite frame mode, the `frame` events of `IWebSocket` objects will be triggered with `ILiteFrame`
-     * object, instead of a `IFrameReadStream` object.
+     * @default EFrameReceiveMode.STANDARD
      */
-    readonly liteFrameMode: boolean;
+    readonly frameReceiveMode: EFrameReceiveMode;
 
     /**
      * Tell whether the connection is writable.
@@ -333,15 +420,15 @@ export interface IWebSocket {
     /* eslint-disable @typescript-eslint/unified-signatures */
 
     /**
-     * Register a callback for event "frame", which will be triggered when a new frame is received.
+     * Register a callback for event "message", which will be triggered when a new message is received.
      *
-     * > The type `frame` parameter in `listener` depends on the `liteFrameMode` property.
+     * > The type `msg` parameter in `listener` depends on the `frameReceiveMode` property.
      *
      * @param event     The event name.
      * @param listener  The callback function.
-     * @see IWebSocket.liteFrameMode
+     * @see IWebSocket.frameReceiveMode
      */
-    on(event: 'frame', listener: (frame: IFrameReadStream | ILiteFrame) => void): this;
+    on(event: 'message', listener: (msg: IMessageReadStream | ISimpleMessage) => void): this;
 
     /**
      * Register a callback for event "error", which will be triggered when an error occurred.
@@ -384,14 +471,23 @@ export interface IWebSocket {
     /* eslint-enable @typescript-eslint/unified-signatures */
 
     /**
-     * Send a text message to remote-side, in a single TEXT frame.
+     * Send a text message to remote-side, in a single TEXT message.
      *
      * > Return true if the data is flushed to kernel buffer completely, otherwise false.
      */
     writeText(data: string): boolean;
 
     /**
-     * Send a binary message to remote-side, in a single BINARY frame.
+     * Create a fragment writer for a message.
+     *
+     * > NOTICES:
+     * > - Don't forget to call `end()` method of the writer to send out the last frame of the message.
+     * > - Don't send any other messages out of the writer before calling its `end()` method.
+     */
+    createMessageWriter(opcode: EOpcode): IMessageWriter;
+
+    /**
+     * Send a binary message to remote-side, in a single BINARY message.
      *
      * @throws `E_CONN_LOST` will be thrown if the connection is closed.
      * @throws `E_CONN_READONLY` will be thrown if the connection is not writable (half-closed).
@@ -401,7 +497,7 @@ export interface IWebSocket {
     writeBinary(data: Buffer | string | Array<Buffer | string>): boolean;
 
     /**
-     * Send a single PING frame to remote-side, with an optional data.
+     * Send a single PING message to remote-side, with an optional data.
      *
      * @throws `E_CONN_LOST` will be thrown if the connection is closed.
      * @throws `E_CONN_READONLY` will be thrown if the connection is not writable (half-closed).
@@ -411,7 +507,7 @@ export interface IWebSocket {
     ping(data?: Buffer | string): boolean;
 
     /**
-     * Send a single PONG frame to remote-side, with an optional data.
+     * Send a single PONG message to remote-side, with an optional data.
      *
      * @throws `E_CONN_LOST` will be thrown if the connection is closed.
      * @throws `E_CONN_READONLY` will be thrown if the connection is not writable (half-closed).
@@ -421,7 +517,7 @@ export interface IWebSocket {
     pong(data?: Buffer | string): boolean;
 
     /**
-     * Send a single CLOSE frame to remote-side, and then close the socket.
+     * Send a single CLOSE message to remote-side, and then close the socket.
      *
      * > If socket is already closed, nothing will happen, and `false` will be returned.
      *
@@ -436,7 +532,10 @@ export interface IWebSocket {
     destroy(): void;
 }
 
-export const DEFAULT_MAX_FRAME_SIZE = 0x400_0000; // 64 MiB
+/**
+ * The maximum size of each message body.
+ */
+export const DEFAULT_MAX_MESSAGE_SIZE = 0x400_0000; // 64 MiB
 
 /**
  * The default timeout for established connections.

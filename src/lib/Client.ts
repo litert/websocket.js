@@ -28,17 +28,25 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
     public constructor(
         socket: $Net.Socket,
         timeout: number,
-        liteFrameMode: boolean
+        frameReceiveMode?: D.EFrameReceiveMode,
+        maxMessageSize?: number,
     ) {
 
-        super(socket, false, socket instanceof TLS.TLSSocket, timeout, liteFrameMode);
+        super(
+            socket,
+            false,
+            socket instanceof TLS.TLSSocket,
+            timeout,
+            frameReceiveMode,
+            maxMessageSize
+        );
 
-        this._maskKey = _.createRandomMaskKey();
+        this._helper.maskKey = _.createRandomMaskKey();
     }
 
     public setMasking(mask: boolean | Buffer): void {
 
-        this._maskKey = mask;
+        this._helper.maskKey = mask;
     }
 }
 
@@ -67,39 +75,82 @@ export function createClientHandshakeHeaders(opts: IClientHandshakeOptions = {})
 
 interface IWsConnectOptionsBase {
 
+    /**
+     * The timeout for connecting to the server.
+     *
+     * @see D.DEFAULT_CONNECT_TIMEOUT
+     */
     connectTimeout?: number;
 
     /**
-     * Disable the `CONTINUATION` frames, to boost the performance.
+     * The mode of receiving frames.
      *
-     * > May lead to incompatible with some servers who uses `CONTINUATION` frames.
-     *
-     * @default false
+     * @see D.EFrameReceiveMode.STANDARD
      */
-    liteFrameMode?: boolean;
+    frameReceiveMode?: D.EFrameReceiveMode;
+
+    /**
+     * The maximum size of each message.
+     *
+     * @see D.DEFAULT_MAX_MESSAGE_SIZE
+     */
+    maxMessageSize?: number;
+
+    /**
+     * The options for the handshake.
+     *
+     * @default {}
+     */
+    wsHandshakeOpts?: IClientHandshakeOptions;
 }
 
 export interface IWssConnectOptions extends Https.RequestOptions, IWsConnectOptionsBase {}
 
 export interface IWsConnectOptions extends Http.RequestOptions, IWsConnectOptionsBase {}
 
+/**
+ * Establish a WebSocket connection to a server via HTTPS.
+ *
+ * @param opts  The options for the connection.
+ *
+ * @returns     The promise of the WebSocket client.
+ */
 export function wssConnect(opts: IWssConnectOptions): Promise<D.IClient> {
+
+    opts.headers = opts.headers ? {
+        ...(opts.headers ?? {}),
+        ...createClientHandshakeHeaders(opts.wsHandshakeOpts),
+    } : createClientHandshakeHeaders(opts.wsHandshakeOpts);
 
     return connect(
         Https.request(opts),
         opts.timeout ?? D.DEFAULT_TIMEOUT,
         opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
-        opts.liteFrameMode,
+        opts.frameReceiveMode,
+        opts.maxMessageSize,
     );
 }
 
+/**
+ * Establish a WebSocket connection to a server via plain HTTP.
+ *
+ * @param opts  The options for the connection.
+ *
+ * @returns     The promise of the WebSocket client.
+ */
 export function wsConnect(opts: IWsConnectOptions): Promise<D.IClient> {
+
+    opts.headers = opts.headers ? {
+        ...(opts.headers ?? {}),
+        ...createClientHandshakeHeaders(opts.wsHandshakeOpts),
+    } : createClientHandshakeHeaders(opts.wsHandshakeOpts);
 
     return connect(
         Http.request(opts),
         opts.timeout ?? D.DEFAULT_TIMEOUT,
         opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
-        opts.liteFrameMode,
+        opts.frameReceiveMode,
+        opts.maxMessageSize,
     );
 }
 
@@ -107,7 +158,8 @@ function connect(
     req: Http.ClientRequest,
     timeout: number,
     connectTimeout: number,
-    liteFrameMode: boolean = false,
+    frameReceiveMode?: D.EFrameReceiveMode,
+    maxMessageSize?: number,
 ): Promise<D.IClient> {
 
     return new Promise((resolve, reject) => {
@@ -164,7 +216,7 @@ function connect(
                 return;
             }
 
-            const ws = new WsClientConnection(socket, timeout, liteFrameMode);
+            const ws = new WsClientConnection(socket, timeout, frameReceiveMode, maxMessageSize);
 
             ws.setMasking(_.createRandomMaskKey());
 
