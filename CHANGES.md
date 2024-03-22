@@ -1,5 +1,9 @@
 # Changes
 
+## v0.2.1
+
+- fix(client): connection close during handshaking should not throw an error.
+
 ## v0.2.0
 
 - build(project): use term `message` instead of `frame`.

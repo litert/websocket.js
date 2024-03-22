@@ -222,6 +222,10 @@ function connect(
 
             resolve(ws);
         })
+            .on('close', () => {
+
+                reject(new E.E_HANDSHAKE_FAILED('Connection closed'));
+            })
             .on('error', (e) => {
 
                 reject(e);
