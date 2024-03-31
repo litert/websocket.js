@@ -1,5 +1,18 @@
 # Changes
 
+## v0.2.2
+
+- feat(connection): added `drain` event supports.
+- feat(connection): added `maxMessageSize` readonly property on connections.
+- feat(connection): now `createMessageWriter` method returns a `Writable` stream.
+- feat(connection): all `write` method supports `callback` parameter for draining.
+- feat(connection): refactored the writing logic.
+- fix(connection): close the connection correctly on received CLOSE opcode.
+- fix(encoding): simplified the code of encoder.
+- fix(encoding): failed to decode an empty FIN frame under SIMPLE mode.
+- fix(encoding): failed to decode an empty FIN frame under STANDARD mode.
+- fix(encoding): a message will be consume multiple times under STANDARD mode.
+
 ## v0.2.1
 
 - fix(client): connection close during handshaking should not throw an error.

@@ -47,9 +47,8 @@ export class WsFrameEncoder {
     public createHeader(
         opcode: D.EOpcode,
         payloadSize: number,
+        isFin: boolean,
         maskKey?: Buffer | number[] | null,
-        chunkIndex: number = 0,
-        isLastChunk: boolean = true
     ): Buffer {
 
         const payloadSizeFieldSize = payloadSize > 65535 ? 8 : payloadSize > 125 ? 2 : 0;
@@ -57,10 +56,7 @@ export class WsFrameEncoder {
 
         let offset: number = 0;
 
-        const FIN_BITS = isLastChunk ? 0b1000_0000 : 0;
-        const OPCODE_BITS = chunkIndex === 0 ? opcode : D.EOpcode.CONTINUATION;
-
-        header[offset++] = FIN_BITS | OPCODE_BITS;
+        header[offset++] = isFin ? 0b1000_0000 | opcode : opcode;
 
         if ((maskKey?.length ?? 4) !== 4) {
 

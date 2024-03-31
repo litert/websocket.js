@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
+import * as NodeFS from 'node:fs';
 import * as $WS from '../../lib';
+
+function writeLog(msg: string): void {
+
+    console.info(`[${new Date().toISOString()}] ${msg}`);
+}
 
 (async () => {
 
@@ -23,9 +29,9 @@ import * as $WS from '../../lib';
         const cli = await $WS.wsConnect({
             'host': '127.0.0.1',
             'port': 42096,
-            'connectTimeout': 500,
+            'connectTimeout': 50000,
             'frameReceiveMode': $WS.EFrameReceiveMode[
-                process.argv.find(i => i.startsWith('--frame-receive-mode'))
+                process.argv.find(i => i.startsWith('--frame-receive-mode='))
                     ?.slice('--frame-receive-mode='.length)?.toUpperCase() as 'STANDARD' ?? 'STANDARD'
             ] ?? $WS.EFrameReceiveMode.STANDARD,
         });
@@ -40,14 +46,14 @@ import * as $WS from '../../lib';
 
                 switch (msg.opcode) {
                     case $WS.EOpcode.CLOSE:
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).readUint16BE()}`);
+                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).readUint16BE()}`);
                         break;
                     case $WS.EOpcode.PING:
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]: ${Buffer.concat(msg.data).toString()}`);
+                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ${Buffer.concat(msg.data).toString()}`);
                         cli.pong(Buffer.concat(msg.data));
                         break;
                     default:
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, Buffer.concat(msg.data).toString());
+                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]:` + Buffer.concat(msg.data).toString());
                 }
                 return;
             }
@@ -55,50 +61,90 @@ import * as $WS from '../../lib';
             switch (msg.opcode) {
                 case $WS.EOpcode.CLOSE:
                     msg.toBuffer().then((buf) => {
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]: code = ${buf.readUint16BE()}`);
+                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: code = ${buf.readUint16BE()}`);
                     }, (e) => {
-                        console.error(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, e);
+                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ` + e);
                     });
                     break;
                 case $WS.EOpcode.PING:
                     msg.toBuffer().then((buf) => {
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]: ${buf.toString()}`);
+                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ${buf.toString()}`);
                         cli.pong(buf);
                     }, (e) => {
-                        console.error(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, e);
+                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ` + e);
                     });
                     break;
                 default:
                     msg.toString().then((buf) => {
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, buf);
+                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]:` + buf);
                     }, (e) => {
-                        console.error(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, e);
+                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ` + e);
                     });
             }
         });
 
+        let i = 0;
         const timer = setInterval(function(): void {
 
-            switch (Math.floor(Math.random() * 3)) {
-                case 2:
+            if (!cli.writable) {
+
+                clearInterval(timer);
+                return;
+            }
+
+            switch (Math.floor(Math.random() * 7)) {
+                case 0:
                     if (cli.frameReceiveMode !== $WS.EFrameReceiveMode.LITE) {
 
+                        writeLog(`Sent fragmented text`);
                         const writer = cli.createMessageWriter($WS.EOpcode.TEXT);
 
                         writer.write('hello ');
                         writer.write('world ');
+                        cli.writeText('hi');
                         writer.write('angus ');
+                        writer.write('- end with non-empty frame - ');
+                        writer.end((i++).toString());
+                        break;
+                    }
+                case 1:
+                    if (cli.frameReceiveMode !== $WS.EFrameReceiveMode.LITE) {
+
+                        writeLog(`Sent fragmented text`);
+                        const writer = cli.createMessageWriter($WS.EOpcode.TEXT);
+
+                        writer.write('hello ');
+                        writer.write('world ');
+                        cli.writeText('hi');
+                        writer.write('angus ');
+                        writer.write('- end with empty frame - ' + (i++).toString());
                         writer.end();
                         break;
                     }
                     // fall-through
-                case 0:
-                    cli.writeText('biu biu biu~');
+                case 2:
+                    writeLog('Sent non-empty text');
+                    cli.writeText('biu biu biu~' + (i++));
                     break;
-                case 1:
-                    cli.writeBinary(Buffer.from('biu biu biu~'));
+                case 3:
+                    writeLog('Sent empty text');
+                    i++;
+                    cli.writeText('');
                     break;
-
+                case 4:
+                    writeLog('Sent binary');
+                    cli.writeBinary(Buffer.from('biu biu biu~' + (i++)));
+                    break;
+                case 5:
+                    writeLog('Sent multiple segments of text');
+                    cli.writeText(['hey ', 'hey ', 'hey ', 'guy', (i++).toString()]);
+                    break;
+                case 6:
+                    if (cli.frameReceiveMode !== $WS.EFrameReceiveMode.LITE) {
+                        writeLog('Sent file');
+                        NodeFS.createReadStream(`${__dirname}/../../tsconfig.json`).pipe(cli.createMessageWriter($WS.EOpcode.TEXT));
+                    }
+                    break;
             }
 
         }, 100);

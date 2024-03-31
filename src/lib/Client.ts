@@ -41,12 +41,12 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
             maxMessageSize
         );
 
-        this._helper.maskKey = _.createRandomMaskKey();
+        this._writer.maskKey = _.createRandomMaskKey();
     }
 
     public setMasking(mask: boolean | Buffer): void {
 
-        this._helper.maskKey = mask;
+        this._writer.maskKey = mask;
     }
 }
 

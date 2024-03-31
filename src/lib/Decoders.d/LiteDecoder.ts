@@ -194,9 +194,7 @@ export class WsLiteDecoder implements D.IDecoder {
                             break;
                         }
 
-                        // if (restSize >= 2) {
                         this._bdrBuf[this._hdrBufFilled++] = buf[offset++];
-                        // }
                     }
 
                     this._hdrSize = this._calcFrameHeaderSize(this._bdrBuf[0], this._bdrBuf[1]);

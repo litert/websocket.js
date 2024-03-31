@@ -25,16 +25,25 @@ const httpServer = Http.createServer(function(req, resp): void {
     resp.end('BAD REQUEST\n');
 });
 
+function writeLog(msg: string): void {
+
+    console.info(`[${new Date().toISOString()}] ${msg}`);
+}
+
 async function socketBody(ws: $WS.IWebSocket): Promise<void> {
 
     const clientId = `${ws.remoteAddress!}:${ws.remotePort!}`;
 
-    console.info(`[${new Date().toISOString()}] Client ${clientId} connected!`);
+    writeLog(`Client ${clientId} connected!`);
 
     let count = 0;
 
+    ws.on('close', () => {
+
+        writeLog(`Client ${clientId} closed`);
+    });
     ws.on('error', (e) => {
-        console.error(e);
+        writeLog((e as any).toString());
     });
     ws.on('message', (msg) => {
 
@@ -44,11 +53,11 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
 
             switch (msg.opcode) {
                 case $WS.EOpcode.CLOSE:
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${msg.data.length > 0 ? Buffer.concat(msg.data).readUint16BE() : 'none'}`);
+                    writeLog(`Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${msg.data.length > 0 ? Buffer.concat(msg.data).readUint16BE() : 'none'}`);
 
                     break;
                 default:
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).toString()}`);
+                    writeLog(`Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).toString()}`);
             }
             return;
         }
@@ -56,16 +65,16 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
         switch (msg.opcode) {
             case $WS.EOpcode.CLOSE:
                 msg.toBuffer().then((buf) => {
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${buf.length ? buf.readUint16BE()  : 'none' }`);
+                    writeLog(`Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${buf.length ? buf.readUint16BE()  : 'none' }`);
                 }, (e) => {
-                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]:`, e);
+                    writeLog(`Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: ` + e);
                 });
                 break;
             default:
                 msg.toString().then((buf) => {
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]:`, buf);
+                    writeLog(`Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}] = ${buf}`);
                 }, (e) => {
-                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]:`, e);
+                    writeLog(`Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: ` + e);
                 });
         }
     });
@@ -74,6 +83,7 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
 
         if (count === 50) {
 
+            writeLog(`Bye`);
             ws.end();
             break;
         }
@@ -81,18 +91,22 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
         count++;
         if (count % 5 === 0) {
 
+            writeLog(`Sent ping`);
             ws.ping('HELLO');
         }
         else if (count % 11 === 0) {
 
+            writeLog(`Sent text`);
             ws.writeText('hello world');
         }
         else if (count % 7 === 0) {
 
+            writeLog(`Sent binary`);
             ws.writeBinary(Buffer.from('HELLO world!'));
         }
         else if (count % 13 === 0 && ws.frameReceiveMode !== $WS.EFrameReceiveMode.LITE) {
 
+            writeLog(`Sent fragmented text`);
             const writer = ws.createMessageWriter($WS.EOpcode.TEXT);
 
             writer.write('hi ');
@@ -100,6 +114,7 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
         }
         else {
 
+            writeLog(`Sent count text`);
             ws.writeText(`test count ${count}`);
         }
 
@@ -107,13 +122,13 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
     }
 
     ws.end();
-    console.warn(`[${new Date().toISOString()}] Client ${clientId} disconnected!`);
+    writeLog(`Client ${clientId} disconnected!`);
 }
 
 const wsServer = $WS.createServer({
-    'timeout': 150,
+    'timeout': 15000,
     'frameReceiveMode': $WS.EFrameReceiveMode[
-        process.argv.find(i => i.startsWith('--frame-receive-mode'))
+        process.argv.find(i => i.startsWith('--frame-receive-mode='))
             ?.slice('--frame-receive-mode='.length)?.toUpperCase() as 'STANDARD' ?? 'STANDARD'
     ] ?? $WS.EFrameReceiveMode.STANDARD,
 });
@@ -128,10 +143,10 @@ httpServer.on('upgrade', (request, socket) => {
             'X-My-Header': 'Hello World!'
         }
     });
-    socketBody(ws).catch(console.error);
+    socketBody(ws).catch((e) => { writeLog(e.toString()); });
 });
 
 // start the server listening on port 42096
 httpServer.listen(42096, '0.0.0.0', () => {
-    console.log('WebSocket server listening on 127.0.0.1:42096');
+    writeLog('WebSocket server listening on 127.0.0.1:42096');
 });

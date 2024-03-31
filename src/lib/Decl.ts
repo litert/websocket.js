@@ -17,7 +17,7 @@
 import type * as Tls from 'node:tls';
 import type * as Http from 'node:http';
 import type * as Net from 'node:net';
-import type { Readable } from 'node:stream';
+import type { Readable, Writable, WritableOptions } from 'node:stream';
 
 export enum ECloseReason {
 
@@ -295,38 +295,12 @@ export interface IMessageReadStream extends Readable, IMessage {
     toBufferArray(): Promise<Buffer[]>;
 }
 
-export interface IMessageWriter {
+export interface IMessageWriter extends Writable {
 
     /**
      * The type of this message.
      */
     readonly opcode: EOpcode;
-
-    /**
-     * Write a frame of the message.
-     *
-     * > The frame will be written into a buffer, and the previous frame written into this writer
-     * > will be sent out.
-     * > That's to say, the last one frame is always buffered, and it will not be sent out until
-     * > `end()` method is called.
-     * > This is for the controlling of `FIN` bit of the frame.
-     *
-     * @param frame The frame to write.
-     */
-    write(frame: string | Buffer): boolean;
-
-    /**
-     * Finish writing the message.
-     *
-     * This method is going to send out the last frame of the message, which is sent with `FIN` bit
-     * set to `1`.
-     *
-     * > If the parameter `frame` is provided, the `write()` method will be called with it before
-     * > sending out the last frame with `FIN` bit set to `1`.
-     *
-     * @param frame  [Optional] The last frame of the message.
-     */
-    end(frame?: string | Buffer): boolean;
 }
 
 export interface IDecoder {
@@ -340,6 +314,8 @@ export interface IDecoder {
 
     reset(): void;
 }
+
+export type IErrorCallback = (e?: Error | null) => void;
 
 export interface IWebSocket {
 
@@ -406,6 +382,13 @@ export interface IWebSocket {
     readonly isServer: boolean;
 
     /**
+     * The maximum size of each message body.
+     *
+     * @default 67108864 (64 MiB)
+     */
+    readonly maxMessageSize: number;
+
+    /**
      * The timeout in milliseconds for the connections after connection is established.
      *
      * > Timeout means the connection is idle for a long time, and the connection will be closed.
@@ -436,6 +419,13 @@ export interface IWebSocket {
      * @param listener  The callback function.
      */
     on(event: 'error', listener: (error: unknown) => void): this;
+
+    /**
+     * Register a callback for event "drain", which will be triggered when an all data in buffer flushed out.
+     * @param event     The event name.
+     * @param listener  The callback function.
+     */
+    on(event: 'drain', listener: () => void): this;
 
     /**
      * Register a callback for event "end", which will be triggered when the websocket is closed by remote-side.
@@ -471,20 +461,20 @@ export interface IWebSocket {
     /* eslint-enable @typescript-eslint/unified-signatures */
 
     /**
-     * Send a text message to remote-side, in a single TEXT message.
-     *
-     * > Return true if the data is flushed to kernel buffer completely, otherwise false.
-     */
-    writeText(data: string): boolean;
-
-    /**
      * Create a fragment writer for a message.
      *
      * > NOTICES:
      * > - Don't forget to call `end()` method of the writer to send out the last frame of the message.
      * > - Don't send any other messages out of the writer before calling its `end()` method.
      */
-    createMessageWriter(opcode: EOpcode): IMessageWriter;
+    createMessageWriter(opcode: EOpcode, opts?: WritableOptions): IMessageWriter;
+
+    /**
+     * Send a text message to remote-side, in a single TEXT message.
+     *
+     * > Return true if the data is flushed to kernel buffer completely, otherwise false.
+     */
+    writeText(data: string | string[], callback?: IErrorCallback): boolean;
 
     /**
      * Send a binary message to remote-side, in a single BINARY message.
@@ -494,7 +484,7 @@ export interface IWebSocket {
      *
      * @returns true if the data is flushed to kernel buffer completely, otherwise false.
      */
-    writeBinary(data: Buffer | string | Array<Buffer | string>): boolean;
+    writeBinary(data: Buffer | string | Array<Buffer | string>, callback?: IErrorCallback): boolean;
 
     /**
      * Send a single PING message to remote-side, with an optional data.
@@ -504,7 +494,7 @@ export interface IWebSocket {
      *
      * @returns true if the data is flushed to kernel buffer completely, otherwise false.
      */
-    ping(data?: Buffer | string): boolean;
+    ping(data?: Buffer | string | Array<string | Buffer>, callback?: IErrorCallback): boolean;
 
     /**
      * Send a single PONG message to remote-side, with an optional data.
@@ -514,7 +504,7 @@ export interface IWebSocket {
      *
      * @returns true if the data is flushed to kernel buffer completely, otherwise false.
      */
-    pong(data?: Buffer | string): boolean;
+    pong(data?: Buffer | string | Array<string | Buffer>, callback?: IErrorCallback): boolean;
 
     /**
      * Send a single CLOSE message to remote-side, and then close the socket.
@@ -524,7 +514,7 @@ export interface IWebSocket {
      * @param reason    The reason code for closing. [default: `ECloseReason.BYE`]
      * @returns `true` if the data is flushed to kernel buffer completely, otherwise `false`.
      */
-    end(reason?: ECloseReason): boolean;
+    end(reason?: ECloseReason, callback?: IErrorCallback): boolean;
 
     /**
      * Close the socket and disable all ops on this socket.

@@ -49,19 +49,19 @@ export class E_CONN_READONLY extends WsError {
     }
 }
 
+export class E_CONN_BUSY extends WsError {
+
+    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
+
+        super('conn_busy', 'There is a writing stream locked on the socket.', context, origin);
+    }
+}
+
 export class E_FRAME_ENDED extends WsError {
 
     public constructor(context: Record<string, any> = {}, origin: unknown = null) {
 
         super('frame_ended', 'Frame has already ended.', context, origin);
-    }
-}
-
-export class E_FRAME_ABORTED extends WsError {
-
-    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
-
-        super('frame_aborted', 'Frame has been aborted.', context, origin);
     }
 }
 

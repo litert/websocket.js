@@ -20,15 +20,29 @@ import * as $Events from 'node:events';
 import * as D from './Decl';
 import * as E from './Errors';
 import { getDecoder } from './Decoders.d';
-import { WsMessageWriteHelper, WsMessageWriter } from './MessageWriter';
+import { WsFrameWriter, WsMessageWriter } from './MessageWriter';
+import { WritableOptions } from 'node:stream';
+
+export interface IQueueItem {
+
+    opcode: D.EOpcode;
+
+    data: any;
+
+    cb?: D.IErrorCallback;
+}
 
 export abstract class AbstractWsConnection extends $Events.EventEmitter implements D.IWebSocket {
 
-    protected readonly _helper: WsMessageWriteHelper;
+    protected readonly _writer: WsFrameWriter;
 
     private readonly _decoder: D.IDecoder;
 
     protected _socket: $Net.Socket | null;
+
+    protected _writeStream: D.IMessageWriter | null = null;
+
+    protected _queue: IQueueItem[] = [];
 
     public constructor(
         socket: $Net.Socket,
@@ -36,14 +50,14 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
         public readonly tls: boolean,
         private _timeout: number,
         public readonly frameReceiveMode: D.EFrameReceiveMode = D.EFrameReceiveMode.STANDARD,
-        maxMessageSize?: number
+        public readonly maxMessageSize: number = 0x4000000,
     ) {
 
         super();
 
         this._socket = socket;
 
-        this._helper = new WsMessageWriteHelper(socket);
+        this._writer = new WsFrameWriter(socket);
 
         this._decoder = getDecoder(frameReceiveMode, maxMessageSize);
 
@@ -129,115 +143,162 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
         }
     }
 
-    public writeBinary(data: Buffer | string | Array<Buffer | string>): boolean {
+    public writeBinary(data: Buffer | string | Array<Buffer | string>, cb?: D.IErrorCallback): boolean {
 
         this._assertWritable();
 
-        let len = 0;
+        if (this._writeStream) {
 
-        if (data instanceof Buffer) {
-
-            len = data.byteLength;
-        }
-        else {
-
-            for (const i of data) {
-
-                len += Buffer.byteLength(i);
-            }
+            this._queue.push({ opcode: D.EOpcode.BINARY, data, cb });
+            return false;
         }
 
-        const maskKey = this._helper.getMaskKey();
-
-        this._socket!.write(this._helper.encoder.createHeader(
-            D.EOpcode.BINARY,
-            len,
-            maskKey
-        ));
-
-        return this._helper.writePayload(data, maskKey);
+        return Array.isArray(data) ?
+            this._writer.writeArray(D.EOpcode.BINARY, true, data, cb) :
+            this._writer.write(D.EOpcode.BINARY, true, data, cb);
     }
 
-    public writeText(data: string): boolean {
+    public writeText(data: string | string[], cb?: D.IErrorCallback): boolean {
 
         this._assertWritable();
 
-        const maskKey = this._helper.getMaskKey();
+        if (this._writeStream) {
 
-        this._socket!.write(this._helper.encoder.createHeader(
-            D.EOpcode.TEXT,
-            Buffer.byteLength(data),
-            maskKey
-        ));
+            this._queue.push({ opcode: D.EOpcode.TEXT, data, cb });
+            return false;
+        }
 
-        return this._helper.writePayload(data, maskKey);
+        return Array.isArray(data) ?
+            this._writer.writeArray(D.EOpcode.TEXT, true, data, cb) :
+            this._writer.write(D.EOpcode.TEXT, true, data, cb);
     }
 
-    public ping(data?: Buffer | string): boolean {
+    public ping(data: Buffer | string | Array<Buffer | string>, cb?: D.IErrorCallback): boolean {
 
         this._assertWritable();
 
-        const maskKey = this._helper.getMaskKey();
+        if (this._writeStream) {
 
-        const ret = this._socket!.write(this._helper.encoder.createHeader(
-            D.EOpcode.PING,
-            data ? Buffer.byteLength(data) : 0,
-            maskKey
-        ));
-
-        if (data) {
-
-            return this._helper.writePayload(data, maskKey);
+            this._queue.push({ opcode: D.EOpcode.PING, data, cb });
+            return false;
         }
 
-        return ret;
+        return Array.isArray(data) ?
+            this._writer.writeArray(D.EOpcode.PING, true, data, cb) :
+            this._writer.write(D.EOpcode.PING, true, data, cb);
     }
 
-    public pong(data?: Buffer | string): boolean {
+    public pong(data: Buffer | string | Array<Buffer | string>, cb?: D.IErrorCallback): boolean {
 
         this._assertWritable();
 
-        const maskKey = this._helper.getMaskKey();
+        if (this._writeStream) {
 
-        const ret = this._socket!.write(this._helper.encoder.createHeader(
-            D.EOpcode.PONG,
-            data ? Buffer.byteLength(data) : 0,
-            maskKey
-        ));
-
-        if (data) {
-
-            return this._helper.writePayload(data, maskKey);
+            this._queue.push({ opcode: D.EOpcode.PONG, data, cb });
+            return false;
         }
 
-        return ret;
+        return Array.isArray(data) ?
+            this._writer.writeArray(D.EOpcode.PONG, true, data, cb) :
+            this._writer.write(D.EOpcode.PONG, true, data, cb);
     }
 
-    public createMessageWriter(opcode: D.EOpcode): D.IMessageWriter {
+    public createMessageWriter(
+        opcode: D.EOpcode,
+        opts?: WritableOptions
+    ): D.IMessageWriter {
 
-        return new WsMessageWriter(opcode, this._socket, this._helper);
+        if (this._writeStream) {
+
+            throw new E.E_CONN_BUSY();
+        }
+
+        if (this.frameReceiveMode === D.EFrameReceiveMode.LITE) {
+
+            throw new E.E_INVALID_PROTOCOL('Lite frame mode does not support message writer.');
+        }
+
+        return this._writeStream = new WsMessageWriter(opcode, this.maxMessageSize, this._writer, opts)
+            .on('close', () => {
+
+                this._writeStream = null;
+
+                if (this._queue.length) {
+
+                    this._flushQueue();
+                }
+            });
     }
 
-    public end(reason: D.ECloseReason = D.ECloseReason.BYE): boolean {
+    private _flushQueue(): void {
 
         if (!this._socket?.writable) {
 
+            for (const i of this._queue) {
+
+                i.cb?.(new E.E_CONN_LOST());
+            }
+            this._queue = [];
+            return;
+        }
+
+        for (const i of this._queue) {
+
+            try {
+
+                switch (i.opcode) {
+                    case D.EOpcode.BINARY:
+                        this.writeBinary(i.data, i.cb);
+                        break;
+
+                    case D.EOpcode.TEXT:
+                        this.writeText(i.data, i.cb);
+                        break;
+
+                    case D.EOpcode.PING:
+                        this.ping(i.data, i.cb);
+                        break;
+
+                    case D.EOpcode.PONG:
+                        this.pong(i.data, i.cb);
+                        break;
+
+                    case D.EOpcode.CLOSE:
+                        this.end(i.data, i.cb);
+                        break;
+                    default:
+                        // do nothing
+                }
+            }
+            catch (e) {
+
+                i.cb?.(e as Error);
+            }
+        }
+
+        this._queue = [];
+    }
+
+    public end(reason: D.ECloseReason = D.ECloseReason.BYE, cb?: D.IErrorCallback): boolean {
+
+        if (this._socket?.writableEnded ?? true) {
+
+            return false;
+        }
+
+        if (this._writeStream) {
+
+            this._queue.push({ opcode: D.EOpcode.CLOSE, data: reason, cb });
             return false;
         }
 
         const reasonBuffer = Buffer.allocUnsafe(2);
 
-        reasonBuffer.writeUint16BE(reason, 0);
+        reasonBuffer.writeUInt16BE(reason, 0);
 
-        const ret = this._socket.write(
-            this._helper.encoder.createHeader(
-                D.EOpcode.CLOSE,
-                2,
-                this._helper.getMaskKey()
-            )
-        );
+        const ret = this._writer.write(D.EOpcode.CLOSE, true, reasonBuffer, cb);
 
-        this._socket.end(reasonBuffer);
+        this._socket?.end();
 
         return ret;
     }
@@ -276,6 +337,7 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
             .on('error', (err) => this.emit('error', err))
             .on('end', () => this.emit('end'))
             .on('finish', () => this.emit('finish'))
+            .on('drain', () => this.emit('drain'))
             .on('data', (d) => {
 
                 try {
@@ -288,7 +350,7 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
 
                         if (i.opcode === D.EOpcode.CLOSE) {
 
-                            this._socket?.end();
+                            this.end();
                         }
                     }
                 }
