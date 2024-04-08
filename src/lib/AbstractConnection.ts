@@ -29,7 +29,7 @@ export interface IQueueItem {
 
     data: any;
 
-    cb?: D.IErrorCallback;
+    cb: D.IErrorCallback;
 }
 
 export abstract class AbstractWsConnection extends $Events.EventEmitter implements D.IWebSocket {
@@ -143,7 +143,10 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
         }
     }
 
-    public writeBinary(data: Buffer | string | Array<Buffer | string>, cb?: D.IErrorCallback): boolean {
+    public writeBinary(
+        data: Buffer | string | Array<Buffer | string>,
+        cb: D.IErrorCallback = this._defaultWriteCallback,
+    ): boolean {
 
         this._assertWritable();
 
@@ -158,7 +161,10 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
             this._writer.write(D.EOpcode.BINARY, true, data, cb);
     }
 
-    public writeText(data: string | string[], cb?: D.IErrorCallback): boolean {
+    public writeText(
+        data: string | string[],
+        cb: D.IErrorCallback = this._defaultWriteCallback,
+    ): boolean {
 
         this._assertWritable();
 
@@ -173,7 +179,10 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
             this._writer.write(D.EOpcode.TEXT, true, data, cb);
     }
 
-    public ping(data: Buffer | string | Array<Buffer | string>, cb?: D.IErrorCallback): boolean {
+    public ping(
+        data: Buffer | string | Array<Buffer | string>,
+        cb: D.IErrorCallback = this._defaultWriteCallback,
+    ): boolean {
 
         this._assertWritable();
 
@@ -188,7 +197,10 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
             this._writer.write(D.EOpcode.PING, true, data, cb);
     }
 
-    public pong(data: Buffer | string | Array<Buffer | string>, cb?: D.IErrorCallback): boolean {
+    public pong(
+        data: Buffer | string | Array<Buffer | string>,
+        cb: D.IErrorCallback = this._defaultWriteCallback,
+    ): boolean {
 
         this._assertWritable();
 
@@ -230,13 +242,21 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
             });
     }
 
+    private readonly _defaultWriteCallback = (e?: Error | null): void => {
+
+        if (e) {
+
+            this.emit('error', e);
+        }
+    };
+
     private _flushQueue(): void {
 
         if (!this._socket?.writable) {
 
             for (const i of this._queue) {
 
-                i.cb?.(new E.E_CONN_LOST());
+                i.cb(new E.E_CONN_LOST());
             }
             this._queue = [];
             return;
@@ -272,14 +292,17 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
             }
             catch (e) {
 
-                i.cb?.(e as Error);
+                i.cb(e as Error);
             }
         }
 
         this._queue = [];
     }
 
-    public end(reason: D.ECloseReason = D.ECloseReason.BYE, cb?: D.IErrorCallback): boolean {
+    public end(
+        reason: D.ECloseReason = D.ECloseReason.BYE,
+        cb: D.IErrorCallback = this._defaultWriteCallback,
+    ): boolean {
 
         if (this._socket?.writableEnded ?? true) {
 

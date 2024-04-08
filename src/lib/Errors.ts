@@ -16,6 +16,8 @@
 
 /* eslint-disable @typescript-eslint/naming-convention */
 
+type IErrorContext = Record<string, any>;
+
 /**
  * The error class for websocket.
  */
@@ -24,7 +26,7 @@ export abstract class WsError extends Error {
     public constructor(
         name: string,
         message: string,
-        public readonly context: Record<string, any>,
+        public readonly context: IErrorContext,
         public readonly origin: unknown
     ) {
 
@@ -35,7 +37,7 @@ export abstract class WsError extends Error {
 
 export class E_CONN_LOST extends WsError {
 
-    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(context: IErrorContext = {}, origin: unknown = null) {
 
         super('conn_lost', 'Connection lost.', context, origin);
     }
@@ -43,7 +45,7 @@ export class E_CONN_LOST extends WsError {
 
 export class E_CONN_READONLY extends WsError {
 
-    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(context: IErrorContext = {}, origin: unknown = null) {
 
         super('conn_readonly', 'Connection is readonly currently.', context, origin);
     }
@@ -51,7 +53,7 @@ export class E_CONN_READONLY extends WsError {
 
 export class E_CONN_BUSY extends WsError {
 
-    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(context: IErrorContext = {}, origin: unknown = null) {
 
         super('conn_busy', 'There is a writing stream locked on the socket.', context, origin);
     }
@@ -59,7 +61,7 @@ export class E_CONN_BUSY extends WsError {
 
 export class E_FRAME_ENDED extends WsError {
 
-    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(context: IErrorContext = {}, origin: unknown = null) {
 
         super('frame_ended', 'Frame has already ended.', context, origin);
     }
@@ -67,7 +69,7 @@ export class E_FRAME_ENDED extends WsError {
 
 export class E_FRAME_BROKEN extends WsError {
 
-    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(context: IErrorContext = {}, origin: unknown = null) {
 
         super('frame_broken', 'The frame is spilt into multiple frames, which is not allowed under the lite frame mode.', context, origin);
     }
@@ -75,7 +77,7 @@ export class E_FRAME_BROKEN extends WsError {
 
 export class E_MESSAGE_TOO_LARGE extends WsError {
 
-    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(context: IErrorContext = {}, origin: unknown = null) {
 
         super('frame_too_large', 'Frame is too large.', context, origin);
     }
@@ -83,7 +85,7 @@ export class E_MESSAGE_TOO_LARGE extends WsError {
 
 export class E_INVALID_PROTOCOL extends WsError {
 
-    public constructor(message: string, context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(message: string, context: IErrorContext = {}, origin: unknown = null) {
 
         super('invalid_protocol', message, context, origin);
     }
@@ -91,7 +93,7 @@ export class E_INVALID_PROTOCOL extends WsError {
 
 export class E_TIMEOUT extends WsError {
 
-    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(context: IErrorContext = {}, origin: unknown = null) {
 
         super('timeout', 'Connection timeout', context, origin);
     }
@@ -99,7 +101,7 @@ export class E_TIMEOUT extends WsError {
 
 export class E_INVALID_CONFIG extends WsError {
 
-    public constructor(context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(context: IErrorContext = {}, origin: unknown = null) {
 
         super('invalid_config', 'The new configuration value is invalid', context, origin);
     }
@@ -107,7 +109,7 @@ export class E_INVALID_CONFIG extends WsError {
 
 export class E_HANDSHAKE_FAILED extends WsError {
 
-    public constructor(message: string, context: Record<string, any> = {}, origin: unknown = null) {
+    public constructor(message: string, context: IErrorContext = {}, origin: unknown = null) {
 
         super('handshake_failed', message, context, origin);
     }

@@ -37,18 +37,12 @@ export class WsFrameWriter {
         opcode: D.EOpcode,
         isFin: boolean,
         payload: Array<Buffer | string>,
-        callback?: D.IErrorCallback
+        callback: D.IErrorCallback
     ): boolean {
 
         if (!this._socket?.writable) {
 
-            if (callback) {
-                callback(new E.E_CONN_LOST());
-            }
-            else {
-                throw new E.E_CONN_LOST();
-            }
-
+            callback(new E.E_CONN_LOST());
             return false;
         }
 
@@ -104,7 +98,7 @@ export class WsFrameWriter {
         opcode: D.EOpcode,
         isFin: boolean,
         payload: Buffer | string,
-        callback?: D.IErrorCallback
+        callback: D.IErrorCallback
     ): boolean {
 
         if (!this._socket?.writable) {
