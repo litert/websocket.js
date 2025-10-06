@@ -1,5 +1,9 @@
 # Changes
 
+## v0.2.4
+
+- feat(connection): added option `forceNewConnection` for connection creation.
+
 ## v0.2.3
 
 - fix(connection): added default write-callback in case of missing uncaught exception.

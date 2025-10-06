@@ -9,7 +9,6 @@
 /tsconfig.json
 /tslint.json
 /examples/
-/commitlint.config.js
 /.husky/
 /test/
 /src/test/
@@ -18,3 +17,5 @@
 /temp/
 /*.sh
 /html/
+/utils/
+/*.config.js

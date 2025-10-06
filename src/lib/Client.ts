@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Angus.Fenying <fenying@litert.org>
+ * Copyright 2025 Angus.Fenying <fenying@litert.org>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-import type * as $Net from 'node:net';
+import * as $Net from 'node:net';
 import * as _ from './Utils';
 import * as Http from 'node:http';
 import * as Https from 'node:https';
-import * as TLS from 'node:tls';
+import * as NodeTLS from 'node:tls';
 import * as D from './Decl';
 import * as E from './Errors';
 import { AbstractWsConnection } from './AbstractConnection';
@@ -35,7 +35,7 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
         super(
             socket,
             false,
-            socket instanceof TLS.TLSSocket,
+            socket instanceof NodeTLS.TLSSocket,
             timeout,
             frameReceiveMode,
             maxMessageSize
@@ -102,6 +102,18 @@ interface IWsConnectOptionsBase {
      * @default {}
      */
     wsHandshakeOpts?: IClientHandshakeOptions;
+
+    /**
+     * Whether to force a new connection.
+     *
+     * > In some case, the underlying HTTP/HTTPS agent may reuse an existing
+     * > connection in the connection pool. This may cause some issues like
+     * > CONN_RESET during the handshake. If you meet such issues, set this
+     * > option to `true` to force a new connection.
+     *
+     * @default true
+     */
+    forceNewConnection?: boolean;
 }
 
 export interface IWssConnectOptions extends Https.RequestOptions, IWsConnectOptionsBase {}
@@ -121,6 +133,28 @@ export function wssConnect(opts: IWssConnectOptions): Promise<D.IClient> {
         ...(opts.headers ?? {}),
         ...createClientHandshakeHeaders(opts.wsHandshakeOpts),
     } : createClientHandshakeHeaders(opts.wsHandshakeOpts);
+
+    if (opts.forceNewConnection !== false) {
+
+        opts.agent = undefined;
+
+        opts.createConnection = (opts, onCreated) => {
+
+            const socketOpts: NodeTLS.ConnectionOptions = {
+
+                ...opts,
+                path: undefined,
+                port: Number(opts.port ?? 443),
+                host: opts.hostname ?? opts.host ?? 'localhost',
+            };
+
+            const socket = NodeTLS.connect(socketOpts);
+
+            onCreated(null, socket);
+
+            return socket;
+        };
+    }
 
     return connect(
         Https.request(opts),
@@ -144,6 +178,27 @@ export function wsConnect(opts: IWsConnectOptions): Promise<D.IClient> {
         ...(opts.headers ?? {}),
         ...createClientHandshakeHeaders(opts.wsHandshakeOpts),
     } : createClientHandshakeHeaders(opts.wsHandshakeOpts);
+
+    if (opts.forceNewConnection !== false) {
+
+        opts.agent = undefined;
+
+        opts.createConnection = (opts, onCreated) => {
+
+            const socketOpts: $Net.NetConnectOpts = {
+
+                ...opts,
+                port: Number(opts.port ?? 80),
+                host: opts.hostname ?? opts.host ?? 'localhost',
+            };
+
+            const socket = $Net.connect(socketOpts);
+
+            onCreated(null, socket);
+
+            return socket;
+        };
+    }
 
     return connect(
         Http.request(opts),
