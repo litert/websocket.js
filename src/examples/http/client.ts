@@ -38,6 +38,7 @@ function writeLog(msg: string): void {
 
         cli.setMasking(false);
         cli.writeText('hello world');
+        cli.writeText(Buffer.from('hello world (buffer)'));
         cli.on('message', (msg) => {
 
             if (msg.mode !== $WS.EFrameReceiveMode.STANDARD) {

@@ -474,9 +474,12 @@ export interface IWebSocket {
     /**
      * Send a text message to remote-side, in a single TEXT message.
      *
-     * > Return true if the data is flushed to kernel buffer completely, otherwise false.
+     * @throws `E_CONN_LOST` will be thrown if the connection is closed.
+     * @throws `E_CONN_READONLY` will be thrown if the connection is not writable (half-closed).
+     *
+     * @returns true if the data is flushed to kernel buffer completely, otherwise false.
      */
-    writeText(data: string | string[], callback?: IErrorCallback): boolean;
+    writeText(data: Buffer | string | Array<Buffer | string>, callback?: IErrorCallback): boolean;
 
     /**
      * Send a binary message to remote-side, in a single BINARY message.

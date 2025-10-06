@@ -162,7 +162,7 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
     }
 
     public writeText(
-        data: string | string[],
+        data: Buffer | string | Array<Buffer | string>,
         cb: D.IErrorCallback = this._defaultWriteCallback,
     ): boolean {
 

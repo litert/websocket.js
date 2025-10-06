@@ -3,6 +3,7 @@
 ## v0.2.4
 
 - feat(connection): added option `forceNewConnection` for connection creation.
+- feat(connection): allow sending `Buffer` in `writeText` method.
 
 ## v0.2.3
 
