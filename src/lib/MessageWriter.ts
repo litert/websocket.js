@@ -13,9 +13,24 @@ export class WsFrameWriter {
 
     public maskKey: Buffer | boolean = false;
 
-    protected _socket: $Net.Socket | null;
+    protected _socket: $Net.Socket | null = null;
 
-    public constructor(socket: $Net.Socket) {
+    public constructor(socket: $Net.Socket | null = null) {
+
+        if (socket) {
+
+            this.setSocket(socket);
+        }
+    }
+
+    public setSocket(socket: $Net.Socket): void {
+
+        if (this._socket) {
+
+            throw new E.E_INTERNAL_ERROR({
+                reason: 'The socket has been set already.',
+            });
+        }
 
         this._socket = socket.on('close', () => {
 

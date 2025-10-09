@@ -1,6 +1,6 @@
 {
   "name": "@litert/websocket",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "The websocket protocol library for LiteRT.",
   "main": "lib/index.js",
   "scripts": {

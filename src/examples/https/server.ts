@@ -89,19 +89,25 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
         count++;
         if (count % 5 === 0) {
 
+            console.log(`[${new Date().toISOString()}] Server sent PING "HELLO"`);
+
             ws.ping('HELLO');
         }
         else if (count % 11 === 0) {
 
             ws.writeText('hello world');
+            console.log(`[${new Date().toISOString()}] Server sent TEXT "hello world"`);
+
         }
         else if (count % 7 === 0) {
 
             ws.writeBinary(Buffer.from('HELLO world!'));
+            console.log(`[${new Date().toISOString()}] Server sent BINARY "HELLO world!"`);
         }
         else {
 
             ws.writeText(`test count ${count}`);
+            console.log(`[${new Date().toISOString()}] Server sent TEXT "test count ${count}"`);
         }
 
         await setTimeout(100);
@@ -120,14 +126,15 @@ const wsServer = $WS.createServer({
 });
 
 // listen for incoming connections
-httpServer.on('upgrade', (request, socket) => {
+httpServer.on('upgrade', (request, socket, head) => {
 
     const ws = wsServer.accept({
         request,
         socket: socket as any,
         headers: {
             'X-My-Header': 'Hello World!'
-        }
+        },
+        clientEarlyDataPayload: head,
     });
     socketBody(ws).catch(console.error);
 });

@@ -134,14 +134,15 @@ const wsServer = $WS.createServer({
 });
 
 // listen for incoming connections
-httpServer.on('upgrade', (request, socket) => {
+httpServer.on('upgrade', (request, socket, head) => {
 
     const ws = wsServer.accept({
         request,
         socket: socket as any,
         headers: {
             'X-My-Header': 'Hello World!'
-        }
+        },
+        clientEarlyDataPayload: head,
     });
     socketBody(ws).catch((e) => { writeLog(e.toString()); });
 });

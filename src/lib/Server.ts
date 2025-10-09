@@ -112,6 +112,7 @@ class WsServer implements D.IServer {
             opts.timeout ?? this._timeout,
             this.frameReceiveMode,
             this.maxMessageSize,
+            opts.clientEarlyDataPayload,
         );
     }
 

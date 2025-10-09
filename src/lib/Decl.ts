@@ -205,6 +205,23 @@ export interface IClient extends IWebSocket {
      * @param key   The key for websocket handshake.
      */
     setMasking(key: Buffer | boolean): void;
+
+    /**
+     * Connect to the server.
+     *
+     * > This method can only be called once, and only when the connection is
+     * > not established yet.
+     * > Considering the early data sent by server during the handshake,
+     * > you must set up the `message` event handler before calling this method.
+     * > Or you will miss the early data sent by server.
+     *
+     * @throws `E_HANDSHAKE_FAILED` will be thrown if the connection is failed.
+     * @throws `E_TIMEOUT` will be thrown if timeout happened during connecting.
+     *
+     * @returns The promise for connecting, which will be resolved when connection
+     * is established, or rejected if any error happened.
+     */
+    connect(): Promise<void>;
 }
 
 export interface IAcceptOptions {
@@ -233,6 +250,13 @@ export interface IAcceptOptions {
      * The whitelist of sub-protocols, matched by the order in the list.
      */
     'subProtocol'?: string;
+
+    /**
+     * The payload data sent immediately after the websocket handshake request,
+     * without waiting for the reply of the handshake response,
+     * which could make it feels like 0-RTT.
+     */
+    'clientEarlyDataPayload'?: Buffer | null;
 }
 
 export interface IRejectOptions {

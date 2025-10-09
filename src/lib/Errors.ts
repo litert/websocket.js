@@ -59,6 +59,14 @@ export class E_CONN_BUSY extends WsError {
     }
 }
 
+export class E_INTERNAL_ERROR extends WsError {
+
+    public constructor(context: IErrorContext = {}, origin: unknown = null) {
+
+        super('internal_error', 'The error insides the websocket library.', context, origin);
+    }
+}
+
 export class E_FRAME_ENDED extends WsError {
 
     public constructor(context: IErrorContext = {}, origin: unknown = null) {

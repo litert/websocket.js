@@ -15,7 +15,7 @@
  */
 
 import * as NodeFS from 'node:fs';
-import * as $WS from '../../lib';
+import * as LibWS from '../../lib';
 
 function writeLog(msg: string): void {
 
@@ -26,63 +26,68 @@ function writeLog(msg: string): void {
 
     try {
 
-        const cli = await $WS.wsConnect({
+        const cli = LibWS.createClient({
             'host': '127.0.0.1',
             'port': 42096,
             'connectTimeout': 50000,
-            'frameReceiveMode': $WS.EFrameReceiveMode[
+            'frameReceiveMode': LibWS.EFrameReceiveMode[
                 process.argv.find(i => i.startsWith('--frame-receive-mode='))
                     ?.slice('--frame-receive-mode='.length)?.toUpperCase() as 'STANDARD' ?? 'STANDARD'
-            ] ?? $WS.EFrameReceiveMode.STANDARD,
+            ] ?? LibWS.EFrameReceiveMode.STANDARD,
         });
 
         cli.setMasking(false);
-        cli.writeText('hello world');
-        cli.writeText(Buffer.from('hello world (buffer)'));
+
+        // always set up message event handler before connecting.
         cli.on('message', (msg) => {
 
-            if (msg.mode !== $WS.EFrameReceiveMode.STANDARD) {
+            if (msg.mode !== LibWS.EFrameReceiveMode.STANDARD) {
 
                 // lite frame mode
 
                 switch (msg.opcode) {
-                    case $WS.EOpcode.CLOSE:
-                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).readUint16BE()}`);
+                    case LibWS.EOpcode.CLOSE:
+                        writeLog(`Recv [${LibWS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).readUint16BE()}`);
                         break;
-                    case $WS.EOpcode.PING:
-                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ${Buffer.concat(msg.data).toString()}`);
+                    case LibWS.EOpcode.PING:
+                        writeLog(`Recv [${LibWS.EOpcode[msg.opcode]}]: ${Buffer.concat(msg.data).toString()}`);
                         cli.pong(Buffer.concat(msg.data));
                         break;
                     default:
-                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]:` + Buffer.concat(msg.data).toString());
+                        writeLog(`Recv [${LibWS.EOpcode[msg.opcode]}]:` + Buffer.concat(msg.data).toString());
                 }
                 return;
             }
 
             switch (msg.opcode) {
-                case $WS.EOpcode.CLOSE:
+                case LibWS.EOpcode.CLOSE:
                     msg.toBuffer().then((buf) => {
-                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: code = ${buf.readUint16BE()}`);
+                        writeLog(`Recv [${LibWS.EOpcode[msg.opcode]}]: code = ${buf.readUint16BE()}`);
                     }, (e) => {
-                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ` + e);
+                        writeLog(`Recv [${LibWS.EOpcode[msg.opcode]}]: ` + e);
                     });
                     break;
-                case $WS.EOpcode.PING:
+                case LibWS.EOpcode.PING:
                     msg.toBuffer().then((buf) => {
-                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ${buf.toString()}`);
+                        writeLog(`Recv [${LibWS.EOpcode[msg.opcode]}]: ${buf.toString()}`);
                         cli.pong(buf);
                     }, (e) => {
-                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ` + e);
+                        writeLog(`Recv [${LibWS.EOpcode[msg.opcode]}]: ` + e);
                     });
                     break;
                 default:
                     msg.toString().then((buf) => {
-                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]:` + buf);
+                        writeLog(`Recv [${LibWS.EOpcode[msg.opcode]}]:` + buf);
                     }, (e) => {
-                        writeLog(`Recv [${$WS.EOpcode[msg.opcode]}]: ` + e);
+                        writeLog(`Recv [${LibWS.EOpcode[msg.opcode]}]: ` + e);
                     });
             }
         });
+
+        await cli.connect();
+
+        cli.writeText('hello world');
+        cli.writeText(Buffer.from('hello world (buffer)'));
 
         let i = 0;
         const timer = setInterval(function(): void {
@@ -95,10 +100,10 @@ function writeLog(msg: string): void {
 
             switch (Math.floor(Math.random() * 7)) {
                 case 0:
-                    if (cli.frameReceiveMode !== $WS.EFrameReceiveMode.LITE) {
+                    if (cli.frameReceiveMode !== LibWS.EFrameReceiveMode.LITE) {
 
                         writeLog(`Sent fragmented text`);
-                        const writer = cli.createMessageWriter($WS.EOpcode.TEXT);
+                        const writer = cli.createMessageWriter(LibWS.EOpcode.TEXT);
 
                         writer.write('hello ');
                         writer.write('world ');
@@ -109,10 +114,10 @@ function writeLog(msg: string): void {
                         break;
                     }
                 case 1:
-                    if (cli.frameReceiveMode !== $WS.EFrameReceiveMode.LITE) {
+                    if (cli.frameReceiveMode !== LibWS.EFrameReceiveMode.LITE) {
 
                         writeLog(`Sent fragmented text`);
-                        const writer = cli.createMessageWriter($WS.EOpcode.TEXT);
+                        const writer = cli.createMessageWriter(LibWS.EOpcode.TEXT);
 
                         writer.write('hello ');
                         writer.write('world ');
@@ -141,9 +146,9 @@ function writeLog(msg: string): void {
                     cli.writeText(['hey ', 'hey ', 'hey ', 'guy', (i++).toString()]);
                     break;
                 case 6:
-                    if (cli.frameReceiveMode !== $WS.EFrameReceiveMode.LITE) {
+                    if (cli.frameReceiveMode !== LibWS.EFrameReceiveMode.LITE) {
                         writeLog('Sent file');
-                        NodeFS.createReadStream(`${__dirname}/../../tsconfig.json`).pipe(cli.createMessageWriter($WS.EOpcode.TEXT));
+                        NodeFS.createReadStream(`${__dirname}/../../tsconfig.json`).pipe(cli.createMessageWriter(LibWS.EOpcode.TEXT));
                     }
                     break;
             }

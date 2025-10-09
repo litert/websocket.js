@@ -14,32 +14,42 @@
  * limitations under the License.
  */
 
-import * as $Net from 'node:net';
-import * as _ from './Utils';
-import * as Http from 'node:http';
-import * as Https from 'node:https';
+import * as NodeNet from 'node:net';
+import * as NodeHttp from 'node:http';
+import * as NodeHttps from 'node:https';
 import * as NodeTLS from 'node:tls';
+import * as _ from './Utils';
 import * as D from './Decl';
 import * as E from './Errors';
 import { AbstractWsConnection } from './AbstractConnection';
 
+type IRequestMaker = () => NodeHttp.ClientRequest;
+
 class WsClientConnection extends AbstractWsConnection implements D.IClient {
 
+    private readonly _mkReq: IRequestMaker;
+
+    private readonly _connectTimeout: number;
+
     public constructor(
-        socket: $Net.Socket,
+        connectTimeout: number,
+        mkReq: IRequestMaker,
+        secure: boolean,
         timeout: number,
         frameReceiveMode?: D.EFrameReceiveMode,
         maxMessageSize?: number,
     ) {
 
         super(
-            socket,
             false,
-            socket instanceof NodeTLS.TLSSocket,
+            secure,
             timeout,
             frameReceiveMode,
-            maxMessageSize
+            maxMessageSize,
         );
+
+        this._mkReq = mkReq;
+        this._connectTimeout = connectTimeout;
 
         this._writer.maskKey = _.createRandomMaskKey();
     }
@@ -48,6 +58,83 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
 
         this._writer.maskKey = mask;
     }
+
+    public connect(): Promise<void> {
+
+        return new Promise((resolve, reject) => {
+
+            const req = this._mkReq();
+
+            if (this._connectTimeout) {
+
+                req.on('socket', (socket): void => {
+
+                    socket.setTimeout(this._connectTimeout, (): void => {
+
+                        socket.destroy(new E.E_TIMEOUT());
+                    });
+                });
+            }
+
+            req.on('upgrade', (res: NodeHttp.IncomingMessage, socket: NodeNet.Socket, head: Buffer) => {
+
+                if (res.headers[D.H1_HDR_NAME_UPGRADE] !== D.H1_HDR_VALUE_UPGRADE.toLowerCase()) {
+
+                    res.destroy();
+                    reject(new E.E_HANDSHAKE_FAILED('Missing UPGRADE header'));
+                    return;
+                }
+
+                if (res.headers[D.H1_HDR_NAME_CONN]?.toLowerCase() !== D.H1_HDR_VALUE_CONNECTION.toLowerCase()) {
+
+                    res.destroy();
+                    reject(new E.E_HANDSHAKE_FAILED('Missing CONNECTION header'));
+                    return;
+                }
+
+                if (!res.headers[D.H1_HDR_NAME_WS_ACCEPT]) {
+
+                    res.destroy();
+                    reject(new Error('No accept response'));
+                    reject(new E.E_HANDSHAKE_FAILED('Missing SEC-WEBSOCKET-ACCEPT header'));
+                    return;
+                }
+
+                const wsKey = req.getHeader(D.H1_HDR_NAME_WS_KEY);
+
+                if (typeof wsKey !== 'string') {
+
+                    res.destroy();
+                    reject(new E.E_HANDSHAKE_FAILED('Missing SEC-WEBSOCKET-KEY header in request'));
+                    return;
+                }
+
+                const hash = _.createAcceptHash(wsKey);
+
+                if (hash !== res.headers[D.H1_HDR_NAME_WS_ACCEPT]) {
+
+                    res.destroy();
+                    reject(new E.E_HANDSHAKE_FAILED('SEC-WEBSOCKET-ACCEPT is mismatched with SEC-WEBSOCKET-KEY'));
+                    return;
+                }
+
+                this._setup(socket, head);
+
+                this.setMasking(_.createRandomMaskKey());
+
+                resolve();
+            })
+                .on('close', () => {
+
+                    reject(new E.E_HANDSHAKE_FAILED('Connection closed'));
+                })
+                .on('error', (e) => {
+
+                    reject(e);
+                })
+                .end();
+        });
+    }
 }
 
 export interface IClientHandshakeOptions {
@@ -55,11 +142,18 @@ export interface IClientHandshakeOptions {
     subProtocols?: string[];
 }
 
-export function createClientHandshakeHeaders(opts: IClientHandshakeOptions = {}): Http.OutgoingHttpHeaders {
+/**
+ * Generate the headers for client handshake.
+ *
+ * @param opts The options for the handshake.
+ *
+ * @returns The headers for the handshake.
+ */
+function createClientHandshakeHeaders(opts: IClientHandshakeOptions = {}): NodeHttp.OutgoingHttpHeaders {
 
     const key = _.createRandomString(20);
 
-    const headers: Http.OutgoingHttpHeaders = {
+    const headers: NodeHttp.OutgoingHttpHeaders = {
         [D.H1_HDR_NAME_WS_KEY]: key,
         [D.H1_HDR_NAME_UPGRADE]: D.H1_HDR_VALUE_UPGRADE,
         [D.H1_HDR_NAME_CONN]: D.H1_HDR_VALUE_CONNECTION,
@@ -116,9 +210,15 @@ interface IWsConnectOptionsBase {
     forceNewConnection?: boolean;
 }
 
-export interface IWssConnectOptions extends Https.RequestOptions, IWsConnectOptionsBase {}
+/**
+ * The type for the options of secure WebSocket client.
+ */
+export interface IWssConnectOptions extends NodeHttps.RequestOptions, IWsConnectOptionsBase {}
 
-export interface IWsConnectOptions extends Http.RequestOptions, IWsConnectOptionsBase {}
+/**
+ * The type for the options of plain WebSocket client.
+ */
+export interface IWsConnectOptions extends NodeHttp.RequestOptions, IWsConnectOptionsBase {}
 
 /**
  * Establish a WebSocket connection to a server via HTTPS.
@@ -126,8 +226,53 @@ export interface IWsConnectOptions extends Http.RequestOptions, IWsConnectOption
  * @param opts  The options for the connection.
  *
  * @returns     The promise of the WebSocket client.
+ *
+ * @deprecated Use `createSecureClient` method instead, because the client can
+ * not process early data sent by server correctly if you use this method. And
+ * this method will be removed in the future.
  */
-export function wssConnect(opts: IWssConnectOptions): Promise<D.IClient> {
+export async function wssConnect(opts: IWssConnectOptions): Promise<D.IClient> {
+
+    const ret = createSecureClient(opts);
+
+    await ret.connect();
+
+    return ret;
+}
+
+/**
+ * Establish a WebSocket connection to a server via plain HTTP.
+ *
+ * @param opts  The options for the connection.
+ *
+ * @returns     The promise of the WebSocket client.
+ *
+ * @deprecated Use `createClient` method instead, because the client can not
+ * process early data sent by server correctly if you use this method. And this
+ * method will be removed in the future.
+ */
+export async function wsConnect(opts: IWsConnectOptions): Promise<D.IClient> {
+
+    const ret = createClient(opts);
+
+    await ret.connect();
+
+    return ret;
+}
+
+/**
+ * Create a WebSocket client via HTTPS.
+ *
+ * > The client will not connect to the server automatically. You need to call
+ * > the `connect` method to establish the connection.
+ * > Before calling `connect`, you must setup the event listeners to handle
+ * > the events emitted during the connection.
+ *
+ * @param opts  The options for the connection.
+ *
+ * @returns   The secure WebSocket client.
+ */
+export function createSecureClient(opts: IWssConnectOptions): D.IClient {
 
     opts.headers = opts.headers ? {
         ...(opts.headers ?? {}),
@@ -156,23 +301,29 @@ export function wssConnect(opts: IWssConnectOptions): Promise<D.IClient> {
         };
     }
 
-    return connect(
-        Https.request(opts),
-        opts.timeout ?? D.DEFAULT_TIMEOUT,
+    return new WsClientConnection(
         opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
+        () => NodeHttp.request(opts),
+        false,
+        opts.timeout ?? D.DEFAULT_TIMEOUT,
         opts.frameReceiveMode,
         opts.maxMessageSize,
     );
 }
 
 /**
- * Establish a WebSocket connection to a server via plain HTTP.
+ * Create a WebSocket client via plain HTTP.
+ *
+ * > The client will not connect to the server automatically. You need to call
+ * > the `connect` method to establish the connection.
+ * > Before calling `connect`, you must setup the event listeners to handle
+ * > the events emitted during the connection.
  *
  * @param opts  The options for the connection.
  *
- * @returns     The promise of the WebSocket client.
+ * @returns  The plain WebSocket client.
  */
-export function wsConnect(opts: IWsConnectOptions): Promise<D.IClient> {
+export function createClient(opts: IWsConnectOptions): D.IClient {
 
     opts.headers = opts.headers ? {
         ...(opts.headers ?? {}),
@@ -185,14 +336,14 @@ export function wsConnect(opts: IWsConnectOptions): Promise<D.IClient> {
 
         opts.createConnection = (opts, onCreated) => {
 
-            const socketOpts: $Net.NetConnectOpts = {
+            const socketOpts: NodeNet.NetConnectOpts = {
 
                 ...opts,
                 port: Number(opts.port ?? 80),
                 host: opts.hostname ?? opts.host ?? 'localhost',
             };
 
-            const socket = $Net.connect(socketOpts);
+            const socket = NodeNet.connect(socketOpts);
 
             onCreated(null, socket);
 
@@ -200,91 +351,12 @@ export function wsConnect(opts: IWsConnectOptions): Promise<D.IClient> {
         };
     }
 
-    return connect(
-        Http.request(opts),
-        opts.timeout ?? D.DEFAULT_TIMEOUT,
+    return new WsClientConnection(
         opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
+        () => NodeHttp.request(opts),
+        false,
+        opts.timeout ?? D.DEFAULT_TIMEOUT,
         opts.frameReceiveMode,
         opts.maxMessageSize,
     );
-}
-
-function connect(
-    req: Http.ClientRequest,
-    timeout: number,
-    connectTimeout: number,
-    frameReceiveMode?: D.EFrameReceiveMode,
-    maxMessageSize?: number,
-): Promise<D.IClient> {
-
-    return new Promise((resolve, reject) => {
-
-        if (connectTimeout) {
-
-            req.on('socket', function(socket): void {
-                socket.setTimeout(connectTimeout, function(): void {
-
-                    socket.destroy(new E.E_TIMEOUT());
-                });
-            });
-        }
-
-        req.on('upgrade', (res: Http.IncomingMessage, socket: $Net.Socket) => {
-
-            if (res.headers[D.H1_HDR_NAME_UPGRADE] !== D.H1_HDR_VALUE_UPGRADE.toLowerCase()) {
-
-                res.destroy();
-                reject(new E.E_HANDSHAKE_FAILED('Missing UPGRADE header'));
-                return;
-            }
-
-            if (res.headers[D.H1_HDR_NAME_CONN]?.toLowerCase() !== D.H1_HDR_VALUE_CONNECTION.toLowerCase()) {
-
-                res.destroy();
-                reject(new E.E_HANDSHAKE_FAILED('Missing CONNECTION header'));
-                return;
-            }
-
-            if (!res.headers[D.H1_HDR_NAME_WS_ACCEPT]) {
-
-                res.destroy();
-                reject(new Error('No accept response'));
-                reject(new E.E_HANDSHAKE_FAILED('Missing SEC-WEBSOCKET-ACCEPT header'));
-                return;
-            }
-
-            const wsKey = req.getHeader(D.H1_HDR_NAME_WS_KEY);
-
-            if (typeof wsKey !== 'string') {
-
-                res.destroy();
-                reject(new E.E_HANDSHAKE_FAILED('Missing SEC-WEBSOCKET-KEY header in request'));
-                return;
-            }
-
-            const hash = _.createAcceptHash(wsKey);
-
-            if (hash !== res.headers[D.H1_HDR_NAME_WS_ACCEPT]) {
-
-                res.destroy();
-                reject(new E.E_HANDSHAKE_FAILED('SEC-WEBSOCKET-ACCEPT is mismatched with SEC-WEBSOCKET-KEY'));
-                return;
-            }
-
-            const ws = new WsClientConnection(socket, timeout, frameReceiveMode, maxMessageSize);
-
-            ws.setMasking(_.createRandomMaskKey());
-
-            resolve(ws);
-        })
-            .on('close', () => {
-
-                reject(new E.E_HANDSHAKE_FAILED('Connection closed'));
-            })
-            .on('error', (e) => {
-
-                reject(e);
-            })
-            .end();
-    });
 }

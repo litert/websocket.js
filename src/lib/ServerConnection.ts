@@ -26,8 +26,17 @@ export class WsServerConnection extends AbstractWsConnection {
         timeout: number,
         frameReceiveMode?: EFrameReceiveMode,
         maxMessageSize?: number,
+        earlyDataPayload: Buffer | null = null,
     ) {
 
-        super(socket, true, tls, timeout, frameReceiveMode, maxMessageSize);
+        super(
+            true,
+            tls,
+            timeout,
+            frameReceiveMode,
+            maxMessageSize,
+        );
+
+        this._setup(socket, earlyDataPayload);
     }
 }

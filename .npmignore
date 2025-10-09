@@ -10,8 +10,8 @@
 /tslint.json
 /examples/
 /.husky/
-/test/
-/src/test/
+/tests/
+/src/tests/
 /src/examples/
 /data/
 /temp/

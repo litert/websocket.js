@@ -1,5 +1,27 @@
 # Changes
 
+## v0.2.5
+
+- feat(connection): added supports for early data.
+
+    The early data is appended to the handshake request or response
+    when the connection is created. Both the client and server can meet
+    the early data during the handshake phase.
+
+    For the server, there is no change to the existing API. And for the client,
+    a pair of new APIs are introduced:
+
+    - `createClient()`: create a client instance without connecting to the server.
+    - `createSecureClient()`: create a secure client instance without connecting to the server.
+
+    After creating the client instance, you can use `connect()` method to
+    connect to the server later. And before calling `connect()`, you must setup
+    the `message` event handler to receive the early data from the server.
+
+    The existing `wsConnect()` and `wssConnect()` methods are kept for backward
+    compatibility, but they are now implemented using the new APIs internally.
+    BTW, they are marked as deprecated, and will be removed in future releases.
+
 ## v0.2.4
 
 - feat(connection): added option `forceNewConnection` for connection creation.

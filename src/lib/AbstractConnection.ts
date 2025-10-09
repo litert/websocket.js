@@ -34,18 +34,17 @@ export interface IQueueItem {
 
 export abstract class AbstractWsConnection extends $Events.EventEmitter implements D.IWebSocket {
 
-    protected readonly _writer: WsFrameWriter;
+    protected readonly _writer = new WsFrameWriter();
 
     private readonly _decoder: D.IDecoder;
 
-    protected _socket: $Net.Socket | null;
+    protected _socket: $Net.Socket | null = null;
 
     protected _writeStream: D.IMessageWriter | null = null;
 
     protected _queue: IQueueItem[] = [];
 
     public constructor(
-        socket: $Net.Socket,
         public readonly isServer: boolean,
         public readonly tls: boolean,
         private _timeout: number,
@@ -55,13 +54,7 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
 
         super();
 
-        this._socket = socket;
-
-        this._writer = new WsFrameWriter(socket);
-
         this._decoder = getDecoder(frameReceiveMode, maxMessageSize);
-
-        this._setup();
     }
 
     public get timeout(): number {
@@ -334,7 +327,10 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
         }
     }
 
-    protected _setup(): void {
+    protected _setup(socket: $Net.Socket, earlyDataPayload: Buffer | null): void {
+
+        this._socket = socket;
+        this._writer.setSocket(socket);
 
         if (!this.connected || !this._socket) {
 
@@ -361,41 +357,47 @@ export abstract class AbstractWsConnection extends $Events.EventEmitter implemen
             .on('end', () => this.emit('end'))
             .on('finish', () => this.emit('finish'))
             .on('drain', () => this.emit('drain'))
-            .on('data', (d) => {
-
-                try {
-
-                    const result = this._decoder.decode(d);
-
-                    for (const i of result) {
-
-                        this.emit('message', i);
-
-                        if (i.opcode === D.EOpcode.CLOSE) {
-
-                            this.end();
-                        }
-                    }
-                }
-                catch (e) {
-
-                    if (e instanceof E.E_INVALID_PROTOCOL) {
-
-                        this.end(D.ECloseReason.PROTOCOL_ERROR);
-                    }
-                    else if (e instanceof E.E_MESSAGE_TOO_LARGE) {
-
-                        this.end(D.ECloseReason.MESSAGE_TOO_BIG);
-                    }
-                    else {
-
-                        this.end(D.ECloseReason.INTERNAL_ERROR);
-                    }
-
-                    this.emit('error', e);
-                }
-            });
+            .on('data', this._onSocketData);
 
         this._socket?.setTimeout(this._timeout);
+
+        if (earlyDataPayload?.byteLength) {
+            process.nextTick(() => { this._onSocketData(earlyDataPayload); } );
+        }
     }
+
+    private readonly _onSocketData = (d: Buffer): void => {
+
+        try {
+
+            const result = this._decoder.decode(d);
+
+            for (const i of result) {
+
+                this.emit('message', i);
+
+                if (i.opcode === D.EOpcode.CLOSE) {
+
+                    this.end();
+                }
+            }
+        }
+        catch (e) {
+
+            if (e instanceof E.E_INVALID_PROTOCOL) {
+
+                this.end(D.ECloseReason.PROTOCOL_ERROR);
+            }
+            else if (e instanceof E.E_MESSAGE_TOO_LARGE) {
+
+                this.end(D.ECloseReason.MESSAGE_TOO_BIG);
+            }
+            else {
+
+                this.end(D.ECloseReason.INTERNAL_ERROR);
+            }
+
+            this.emit('error', e);
+        }
+    };
 }

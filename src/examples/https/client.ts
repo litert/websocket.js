@@ -15,24 +15,23 @@
  */
 
 import * as fs from 'node:fs';
-import * as $WS from '../../lib';
+import * as LibWS from '../../lib';
 
 (async () => {
 
     try {
 
-        const cli = await $WS.wssConnect({
+        const cli = LibWS.createSecureClient({
             'host': '127.0.0.1',
             'ca': fs.readFileSync(`${__dirname}/../../temp/ca.pem`),
             'servername': 'websocket-demo.litert.org',
             'port': 2096,
             'connectTimeout': 500,
-            'frameReceiveMode': $WS.EFrameReceiveMode[
+            'frameReceiveMode': LibWS.EFrameReceiveMode[
                 process.argv.find(i => i.startsWith('--frame-receive-mode'))
                     ?.slice('--frame-receive-mode='.length)?.toUpperCase() as 'STANDARD' ?? 'STANDARD'
-            ] ?? $WS.EFrameReceiveMode.STANDARD,
+            ] ?? LibWS.EFrameReceiveMode.STANDARD,
         });
-        console.log(cli.peerCertificate?.subject);
 
         switch (Math.floor(Math.random() * 4)) {
             case 0:
@@ -50,60 +49,67 @@ import * as $WS from '../../lib';
             default:
                 break; // keep default behavior.
         }
-        cli.setMasking(false);
-        cli.writeText('hello world');
+
+        // always set up message event handler before connecting.
         cli.on('message', (msg) => {
 
-            if (msg.mode !== $WS.EFrameReceiveMode.STANDARD) {
+            if (msg.mode !== LibWS.EFrameReceiveMode.STANDARD) {
 
                 // lite frame mode
 
                 switch (msg.opcode) {
-                    case $WS.EOpcode.CLOSE:
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).readUint16BE()}`);
+                    case LibWS.EOpcode.CLOSE:
+                        console.log(`[${new Date().toISOString()}] Recv [${LibWS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).readUint16BE()}`);
                         break;
-                    case $WS.EOpcode.PING:
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]: ${Buffer.concat(msg.data).toString()}`);
+                    case LibWS.EOpcode.PING:
+                        console.log(`[${new Date().toISOString()}] Recv [${LibWS.EOpcode[msg.opcode]}]: ${Buffer.concat(msg.data).toString()}`);
                         cli.pong(Buffer.concat(msg.data));
                         break;
                     default:
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, Buffer.concat(msg.data));
+                        console.log(`[${new Date().toISOString()}] Recv [${LibWS.EOpcode[msg.opcode]}]:`, Buffer.concat(msg.data));
                 }
                 return;
             }
 
             switch (msg.opcode) {
-                case $WS.EOpcode.CLOSE:
+                case LibWS.EOpcode.CLOSE:
                     msg.toBuffer().then((buf) => {
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]: code = ${buf.readUint16BE()}`);
+                        console.log(`[${new Date().toISOString()}] Recv [${LibWS.EOpcode[msg.opcode]}]: code = ${buf.readUint16BE()}`);
                     }, (e) => {
-                        console.error(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, e);
+                        console.error(`[${new Date().toISOString()}] Recv [${LibWS.EOpcode[msg.opcode]}]:`, e);
                     });
                     break;
-                case $WS.EOpcode.PING:
+                case LibWS.EOpcode.PING:
                     msg.toBuffer().then((buf) => {
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]: ${buf.toString()}`);
+                        console.log(`[${new Date().toISOString()}] Recv [${LibWS.EOpcode[msg.opcode]}]: ${buf.toString()}`);
                         cli.pong(buf);
                     }, (e) => {
-                        console.error(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, e);
+                        console.error(`[${new Date().toISOString()}] Recv [${LibWS.EOpcode[msg.opcode]}]:`, e);
                     });
                     break;
                 default:
                     msg.toString().then((buf) => {
-                        console.log(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, buf);
+                        console.log(`[${new Date().toISOString()}] Recv [${LibWS.EOpcode[msg.opcode]}]:`, buf);
                     }, (e) => {
-                        console.error(`[${new Date().toISOString()}] Recv [${$WS.EOpcode[msg.opcode]}]:`, e);
+                        console.error(`[${new Date().toISOString()}] Recv [${LibWS.EOpcode[msg.opcode]}]:`, e);
                     });
             }
         });
 
+        await cli.connect();
+
+        console.log(cli.peerCertificate?.subject);
+
+        cli.writeText('hello world');
+
+        let c = 0;
         const timer = setInterval(function(): void {
 
             if (Math.random() > 0.5) {
-                cli.writeText('biu biu biu~');
+                cli.writeText('biu biu biu~' + (c++).toString());
             }
             else {
-                cli.writeBinary(Buffer.from('biu biu biu~'));
+                cli.writeBinary(Buffer.from('biu biu biu~' + (c++).toString()));
             }
         }, 100);
 
