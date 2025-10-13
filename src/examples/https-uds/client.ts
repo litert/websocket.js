@@ -22,11 +22,12 @@ import * as LibWS from '../../lib';
     try {
 
         const cli = LibWS.createSecureClient({
-            'host': '127.0.0.1',
+            'socketPath': '/tmp/wss-server.sock',
             'path': '/ws',
+            // 'host': '127.0.0.1',
             'ca': NodeFS.readFileSync(`${__dirname}/../../temp/ca.pem`),
             'servername': 'websocket-demo.litert.org',
-            'port': 2096,
+            // 'port': 2096,
             'connectTimeout': 500,
             'frameReceiveMode': LibWS.EFrameReceiveMode[
                 process.argv.find(i => i.startsWith('--frame-receive-mode'))

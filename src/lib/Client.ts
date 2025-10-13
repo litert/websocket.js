@@ -290,7 +290,14 @@ export function createSecureClient(opts: IWssConnectOptions): D.IClient {
 
         opts.createConnection = (opts, onCreated) => {
 
-            const socketOpts: NodeTLS.ConnectionOptions = {
+            const socketOpts: NodeTLS.ConnectionOptions = opts.socketPath ? {
+
+                ...opts,
+                path: opts.socketPath,
+                port: undefined,
+                host: undefined,
+
+            } : {
 
                 ...opts,
                 path: undefined,

@@ -2,6 +2,11 @@
 
 ## v0.2.6
 
+- fix(client): the UNIX domain socket path should work as expected.
+
+    The UDS path was mistakenly ignored when `forceNewConnection` is set to
+    `true` on HTTPS connections.
+
 - fix(client): should not crash if timeout during connecting to server.
 
     A missed error event on the socket will cause an uncaught exception.

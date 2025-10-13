@@ -14,37 +14,37 @@
  * limitations under the License.
  */
 
-import * as NodeHttp from 'node:http';
+import * as NodeHttps from 'node:https';
+import * as NodeFS from 'node:fs';
 import * as LibWS from '../../lib';
 import { setTimeout } from 'node:timers/promises';
 
 // create the HTTP server
-const httpServer = NodeHttp.createServer(function(req, resp): void {
+const httpServer = NodeHttps.createServer({
+
+    ca: NodeFS.readFileSync(`${__dirname}/../../temp/ca.pem`),
+    cert: NodeFS.readFileSync(`${__dirname}/../../temp/newcerts/server-websocket-demo.litert.org.fullchain.pem`),
+    key: NodeFS.readFileSync(`${__dirname}/../../temp/private/server-websocket-demo.litert.org.key.pem`),
+
+}, function(req, resp): void {
 
     resp.writeHead(400, { 'Content-Type': 'text/plain' });
     resp.end('BAD REQUEST\n');
 });
 
-function writeLog(msg: string): void {
-
-    console.info(`[${new Date().toISOString()}] ${msg}`);
-}
-
 async function socketBody(ws: LibWS.IWebSocket): Promise<void> {
 
     const clientId = `${ws.remoteAddress!}:${ws.remotePort!}`;
 
-    writeLog(`Client ${clientId} connected!`);
+    console.info(`[${new Date().toISOString()}] Client ${clientId} connected!`);
 
     let count = 0;
 
-    ws.on('close', () => {
-
-        writeLog(`Client ${clientId} closed`);
-    });
     ws.on('error', (e) => {
-        writeLog((e as any).toString());
+
+        console.error(e);
     });
+
     ws.on('message', (msg) => {
 
         if (msg.mode !== LibWS.EFrameReceiveMode.STANDARD) {
@@ -53,11 +53,10 @@ async function socketBody(ws: LibWS.IWebSocket): Promise<void> {
 
             switch (msg.opcode) {
                 case LibWS.EOpcode.CLOSE:
-                    writeLog(`Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: code = ${msg.data.length > 0 ? Buffer.concat(msg.data).readUint16BE() : 'none'}`);
-
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).readUint16BE()}`);
                     break;
                 default:
-                    writeLog(`Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).toString()}`);
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).toString()}`);
             }
             return;
         }
@@ -65,16 +64,16 @@ async function socketBody(ws: LibWS.IWebSocket): Promise<void> {
         switch (msg.opcode) {
             case LibWS.EOpcode.CLOSE:
                 msg.toBuffer().then((buf) => {
-                    writeLog(`Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: code = ${buf.length ? buf.readUint16BE()  : 'none' }`);
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: code = ${buf.readUint16BE()}`);
                 }, (e) => {
-                    writeLog(`Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: ` + e);
+                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]:`, e);
                 });
                 break;
             default:
                 msg.toString().then((buf) => {
-                    writeLog(`Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}] = ${buf}`);
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]:`, buf);
                 }, (e) => {
-                    writeLog(`Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: ` + e);
+                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]:`, e);
                 });
         }
     });
@@ -83,7 +82,6 @@ async function socketBody(ws: LibWS.IWebSocket): Promise<void> {
 
         if (count === 50) {
 
-            writeLog(`Bye`);
             ws.end();
             break;
         }
@@ -91,44 +89,38 @@ async function socketBody(ws: LibWS.IWebSocket): Promise<void> {
         count++;
         if (count % 5 === 0) {
 
-            writeLog(`Sent ping`);
+            console.log(`[${new Date().toISOString()}] Server sent PING "HELLO"`);
+
             ws.ping('HELLO');
         }
         else if (count % 11 === 0) {
 
-            writeLog(`Sent text`);
             ws.writeText('hello world');
+            console.log(`[${new Date().toISOString()}] Server sent TEXT "hello world"`);
+
         }
         else if (count % 7 === 0) {
 
-            writeLog(`Sent binary`);
             ws.writeBinary(Buffer.from('HELLO world!'));
-        }
-        else if (count % 13 === 0 && ws.frameReceiveMode !== LibWS.EFrameReceiveMode.LITE) {
-
-            writeLog(`Sent fragmented text`);
-            const writer = ws.createMessageWriter(LibWS.EOpcode.TEXT);
-
-            writer.write('hi ');
-            writer.end();
+            console.log(`[${new Date().toISOString()}] Server sent BINARY "HELLO world!"`);
         }
         else {
 
-            writeLog(`Sent count text`);
             ws.writeText(`test count ${count}`);
+            console.log(`[${new Date().toISOString()}] Server sent TEXT "test count ${count}"`);
         }
 
         await setTimeout(100);
     }
 
     ws.end();
-    writeLog(`Client ${clientId} disconnected!`);
+    console.warn(`[${new Date().toISOString()}] Client ${clientId} disconnected!`);
 }
 
 const wsServer = LibWS.createServer({
-    'timeout': 15000,
+    'timeout': 250,
     'frameReceiveMode': LibWS.EFrameReceiveMode[
-        process.argv.find(i => i.startsWith('--frame-receive-mode='))
+        process.argv.find(i => i.startsWith('--frame-receive-mode'))
             ?.slice('--frame-receive-mode='.length)?.toUpperCase() as 'STANDARD' ?? 'STANDARD'
     ] ?? LibWS.EFrameReceiveMode.STANDARD,
 });
@@ -146,10 +138,21 @@ httpServer.on('upgrade', (request, socket, head) => {
         },
         clientEarlyDataPayload: head,
     });
-    socketBody(ws).catch((e) => { writeLog(e.toString()); });
+    socketBody(ws).catch(console.error);
 });
 
-// start the server listening on port 42096
-httpServer.listen(42096, '0.0.0.0', () => {
-    writeLog('WebSocket server listening on 127.0.0.1:42096');
+const UDS_PATH = '/tmp/wss-server.sock';
+
+try {
+
+    NodeFS.unlinkSync(UDS_PATH);
+}
+catch {
+
+    // Ignore
+}
+
+// start the server listening on /tmp/wss-server.sock
+httpServer.listen(UDS_PATH, () => {
+    console.log(`WebSocket server listening on ${UDS_PATH}`);
 });

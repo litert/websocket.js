@@ -15,6 +15,7 @@
  */
 
 import * as NodeHttp from 'node:http';
+import * as NodeFS from 'node:fs';
 import * as LibWS from '../../lib';
 import { setTimeout } from 'node:timers/promises';
 
@@ -149,7 +150,18 @@ httpServer.on('upgrade', (request, socket, head) => {
     socketBody(ws).catch((e) => { writeLog(e.toString()); });
 });
 
-// start the server listening on port 42096
-httpServer.listen(42096, '0.0.0.0', () => {
-    writeLog('WebSocket server listening on 127.0.0.1:42096');
+const UDS_PATH = '/tmp/ws-server.sock';
+
+try {
+
+    NodeFS.unlinkSync(UDS_PATH);
+}
+catch {
+
+    // Ignore
+}
+
+// start the server listening on /tmp/ws-server.sock
+httpServer.listen(UDS_PATH, () => {
+    writeLog(`WebSocket server listening on ${UDS_PATH}`);
 });

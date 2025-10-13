@@ -27,9 +27,8 @@ function writeLog(msg: string): void {
     try {
 
         const cli = LibWS.createClient({
-            'host': '127.0.0.1',
+            'socketPath': '/tmp/ws-server.sock',
             'path': '/ws',
-            'port': 42096,
             'connectTimeout': 50000,
             'frameReceiveMode': LibWS.EFrameReceiveMode[
                 process.argv.find(i => i.startsWith('--frame-receive-mode='))

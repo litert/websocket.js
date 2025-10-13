@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-import * as Http from 'node:https';
-import * as fs from 'node:fs';
-import * as $WS from '../../lib';
+import * as NodeHttps from 'node:https';
+import * as NodeFS from 'node:fs';
+import * as LibWS from '../../lib';
 import { setTimeout } from 'node:timers/promises';
 
 // create the HTTP server
-const httpServer = Http.createServer({
+const httpServer = NodeHttps.createServer({
 
-    ca: fs.readFileSync(`${__dirname}/../../temp/ca.pem`),
-    cert: fs.readFileSync(`${__dirname}/../../temp/newcerts/server-websocket-demo.litert.org.fullchain.pem`),
-    key: fs.readFileSync(`${__dirname}/../../temp/private/server-websocket-demo.litert.org.key.pem`),
+    ca: NodeFS.readFileSync(`${__dirname}/../../temp/ca.pem`),
+    cert: NodeFS.readFileSync(`${__dirname}/../../temp/newcerts/server-websocket-demo.litert.org.fullchain.pem`),
+    key: NodeFS.readFileSync(`${__dirname}/../../temp/private/server-websocket-demo.litert.org.key.pem`),
 
 }, function(req, resp): void {
 
@@ -32,7 +32,7 @@ const httpServer = Http.createServer({
     resp.end('BAD REQUEST\n');
 });
 
-async function socketBody(ws: $WS.IWebSocket): Promise<void> {
+async function socketBody(ws: LibWS.IWebSocket): Promise<void> {
 
     const clientId = `${ws.remoteAddress!}:${ws.remotePort!}`;
 
@@ -47,33 +47,33 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
 
     ws.on('message', (msg) => {
 
-        if (msg.mode !== $WS.EFrameReceiveMode.STANDARD) {
+        if (msg.mode !== LibWS.EFrameReceiveMode.STANDARD) {
 
             // lite frame mode
 
             switch (msg.opcode) {
-                case $WS.EOpcode.CLOSE:
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).readUint16BE()}`);
+                case LibWS.EOpcode.CLOSE:
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).readUint16BE()}`);
                     break;
                 default:
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).toString()}`);
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: code = ${Buffer.concat(msg.data).toString()}`);
             }
             return;
         }
 
         switch (msg.opcode) {
-            case $WS.EOpcode.CLOSE:
+            case LibWS.EOpcode.CLOSE:
                 msg.toBuffer().then((buf) => {
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]: code = ${buf.readUint16BE()}`);
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]: code = ${buf.readUint16BE()}`);
                 }, (e) => {
-                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]:`, e);
+                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]:`, e);
                 });
                 break;
             default:
                 msg.toString().then((buf) => {
-                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]:`, buf);
+                    console.log(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]:`, buf);
                 }, (e) => {
-                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${$WS.EOpcode[msg.opcode]}]:`, e);
+                    console.error(`[${new Date().toISOString()}] Client ${clientId} frame[${LibWS.EOpcode[msg.opcode]}]:`, e);
                 });
         }
     });
@@ -117,16 +117,18 @@ async function socketBody(ws: $WS.IWebSocket): Promise<void> {
     console.warn(`[${new Date().toISOString()}] Client ${clientId} disconnected!`);
 }
 
-const wsServer = $WS.createServer({
+const wsServer = LibWS.createServer({
     'timeout': 250,
-    'frameReceiveMode': $WS.EFrameReceiveMode[
+    'frameReceiveMode': LibWS.EFrameReceiveMode[
         process.argv.find(i => i.startsWith('--frame-receive-mode'))
             ?.slice('--frame-receive-mode='.length)?.toUpperCase() as 'STANDARD' ?? 'STANDARD'
-    ] ?? $WS.EFrameReceiveMode.STANDARD,
+    ] ?? LibWS.EFrameReceiveMode.STANDARD,
 });
 
 // listen for incoming connections
 httpServer.on('upgrade', (request, socket, head) => {
+
+    console.log(`Received upgrade request: ${request.method} ${request.url}`);
 
     const ws = wsServer.accept({
         request,
