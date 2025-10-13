@@ -73,6 +73,11 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
 
                         socket.destroy(new E.E_TIMEOUT());
                     });
+
+                    socket.once('error', (e) => {
+
+                        reject(e);
+                    });
                 });
             }
 

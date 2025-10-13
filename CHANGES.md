@@ -1,5 +1,11 @@
 # Changes
 
+## v0.2.6
+
+- fix(client): should not crash if timeout during connecting to server.
+
+    A missed error event on the socket will cause an uncaught exception.
+
 ## v0.2.5
 
 - feat(connection): added supports for early data.
