@@ -346,13 +346,18 @@ export function createClient(opts: IWsConnectOptions): D.IClient {
 
         opts.agent = undefined;
 
-        opts.createConnection = (opts, onCreated) => {
+        opts.createConnection = (connArgs, onCreated) => {
 
-            const socketOpts: NodeNet.NetConnectOpts = {
-
-                ...opts,
-                port: Number(opts.port ?? 80),
-                host: opts.hostname ?? opts.host ?? 'localhost',
+            const socketOpts: NodeNet.NetConnectOpts = opts.socketPath ? {
+                'port': undefined,
+                'host': undefined,
+                'timeout': opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
+                'path': opts.socketPath,
+            } : {
+                'timeout': opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
+                'port': Number(connArgs.port ?? 80),
+                'host': connArgs.hostname ?? connArgs.host ?? 'localhost',
+                'path': undefined,
             };
 
             const socket = NodeNet.connect(socketOpts);

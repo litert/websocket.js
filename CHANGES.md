@@ -1,5 +1,12 @@
 # Changes
 
+## v0.2.7
+
+- fix(client): the UNIX domain socket path should work as expected.
+
+    The UDS path was mistakenly ignored when `forceNewConnection` is set to
+    `true` on HTTP connections.
+
 ## v0.2.6
 
 - fix(client): the UNIX domain socket path should work as expected.
