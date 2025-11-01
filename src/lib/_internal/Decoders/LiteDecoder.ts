@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-import * as D from '../Decl';
-import * as E from '../Errors';
+import * as cL from '../../Constants';
+import type * as dL from '../../Decl';
+import * as eL from '../../Errors';
 import { mask } from '../MaskFn';
-import { WsSimpleMessage } from '../SimpleMessage';
+import { WsSimpleMessage } from '../../SimpleMessage';
 
 interface IChunkHeader {
 
     /**
      * The payload of each chunk.
      */
-    opcode: D.EOpcode;
+    opcode: cL.EOpcode;
 
     /**
      * The payload of each chunk.
@@ -43,7 +44,7 @@ enum EState {
     READING_PAYLOAD,
 }
 
-export class WsLiteDecoder implements D.IDecoder {
+export class WsLiteDecoder implements dL.IDecoder {
 
     /**
      * The current state of the decoder.
@@ -95,7 +96,7 @@ export class WsLiteDecoder implements D.IDecoder {
 
         if (headerByte1 & 0b0111_0000) {
 
-            throw new E.E_INVALID_PROTOCOL('RSV1, RSV2, RSV3 must be 0');
+            throw new eL.E_INVALID_PROTOCOL('RSV1, RSV2, RSV3 must be 0');
         }
 
         const isMasked: boolean = !!(headerByte2 & 0b1000_0000);
@@ -124,16 +125,16 @@ export class WsLiteDecoder implements D.IDecoder {
 
         if (!fin) {
 
-            throw new E.E_FRAME_BROKEN();
+            throw new eL.E_FRAME_BROKEN();
         }
 
         const opcode = headerByte1 & 0b0000_1111;
         const masked = (headerByte2 & 0b1000_0000) === 0b1000_0000;
         const chunkSize = headerByte2 & 0b0111_1111;
 
-        if (D.EOpcode[opcode] === undefined) {
+        if (cL.EOpcode[opcode] === undefined) {
 
-            throw new E.E_INVALID_PROTOCOL('Unknown opcode');
+            throw new eL.E_INVALID_PROTOCOL('Unknown opcode');
         }
 
         this._chunkHeader = {
@@ -152,7 +153,7 @@ export class WsLiteDecoder implements D.IDecoder {
 
             if (bytes.readUInt16BE(offset) & 0b1111_1111_1110_0000) { // check if it's safe for javascript integer.
 
-                throw new E.E_MESSAGE_TOO_LARGE();
+                throw new eL.E_MESSAGE_TOO_LARGE();
             }
 
             this._chunkHeader.length = bytes.readUInt32BE(offset) * 0x1_0000_0000 + bytes.readUInt32BE(offset + 4);
@@ -161,7 +162,7 @@ export class WsLiteDecoder implements D.IDecoder {
 
         if (this.maxMessageSize < this._chunkHeader.length) {
 
-            throw new E.E_MESSAGE_TOO_LARGE();
+            throw new eL.E_MESSAGE_TOO_LARGE();
         }
 
         this._chunks = [];
@@ -172,11 +173,11 @@ export class WsLiteDecoder implements D.IDecoder {
         }
     }
 
-    public decode(buf: Buffer): D.ISimpleMessage[] {
+    public decode(buf: Buffer): dL.ISimpleMessage[] {
 
         let offset = 0;
 
-        const ret: D.ISimpleMessage[] = [];
+        const ret: dL.ISimpleMessage[] = [];
 
         while (offset < buf.byteLength) {
 
@@ -251,7 +252,7 @@ export class WsLiteDecoder implements D.IDecoder {
                         offset += chunkRest;
 
                         ret.push(new WsSimpleMessage(
-                            D.EFrameReceiveMode.LITE,
+                            cL.EFrameReceiveMode.LITE,
                             this._chunkHeader!.opcode,
                             this._chunks,
                         ));

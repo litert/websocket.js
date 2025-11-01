@@ -1,5 +1,16 @@
 # Changes
 
+## v0.2.8
+
+- build(doc): added documents for this library.
+
+    By now, only [en-US](https://litert.org/projects/websocket.js/) edition is available.
+
+    - [Quick Start](https://litert.org/projects/websocket.js/guides/quick-start.html)
+    - [FAQ](https://litert.org/projects/websocket.js/guides/faq.html)
+    - [API Reference](https://litert.org/projects/websocket.js/api/)
+
+
 ## v0.2.7
 
 - fix(client): the UNIX domain socket path should work as expected.

@@ -14,21 +14,22 @@
  * limitations under the License.
  */
 
-import * as D from './Decl';
-import * as _ from './Utils';
 import type * as Http from 'node:http';
-import { WsServerConnection } from './ServerConnection';
 import { TLSSocket } from 'node:tls';
+import type * as dL from './Decl';
+import * as cL from './Constants';
+import * as _ from './_internal/Utils';
+import { WsServerConnection } from './_internal/ServerConnection';
 import * as E from './Errors';
 
 const DEFAULT_REJECT_RESPONSE = Buffer.from('BAD REQUEST');
 
-class WsServer implements D.IServer {
+class WsServer implements dL.IServer {
 
     public constructor(
         private _timeout: number,
         private _maxMessageSize: number,
-        public readonly frameReceiveMode: D.EFrameReceiveMode,
+        public readonly frameReceiveMode: cL.EFrameReceiveMode,
     ) {}
 
     public get timeout(): number {
@@ -63,14 +64,14 @@ class WsServer implements D.IServer {
 
     public isWebSocketRequest(req: Http.IncomingMessage): boolean {
 
-        return typeof req.headers[D.H1_HDR_NAME_WS_KEY] === 'string'
-            && req.headers[D.H1_HDR_NAME_CONN]?.toLowerCase() === D.H1_HDR_VALUE_CONNECTION.toLowerCase()
-            && req.headers[D.H1_HDR_NAME_UPGRADE]?.toLowerCase() === D.H1_HDR_VALUE_UPGRADE.toLowerCase();
+        return typeof req.headers[cL.H1_HDR_NAME_WS_KEY] === 'string'
+            && req.headers[cL.H1_HDR_NAME_CONN]?.toLowerCase() === cL.H1_HDR_VALUE_CONNECTION.toLowerCase()
+            && req.headers[cL.H1_HDR_NAME_UPGRADE]?.toLowerCase() === cL.H1_HDR_VALUE_UPGRADE.toLowerCase();
     }
 
     public extractSubProtocolFromRequest(req: Http.IncomingMessage): string[] {
 
-        const sp = req.headers[D.H1_HDR_NAME_WS_PROTOCOL];
+        const sp = req.headers[cL.H1_HDR_NAME_WS_PROTOCOL];
 
         if (typeof sp === 'string') {
 
@@ -84,24 +85,24 @@ class WsServer implements D.IServer {
         return [];
     }
 
-    public accept(opts: D.IAcceptOptions): D.IWebSocket {
+    public accept(opts: dL.IAcceptOptions): dL.IWebSocket {
 
-        const acceptHash = _.createAcceptHash(opts.request.headers[D.H1_HDR_NAME_WS_KEY]!);
+        const acceptHash = _.createAcceptHash(opts.request.headers[cL.H1_HDR_NAME_WS_KEY]!);
 
         const header: Http.OutgoingHttpHeaders = {
             ...(opts.headers ?? {}),
-            [D.H1_HDR_NAME_UPGRADE]: D.H1_HDR_VALUE_UPGRADE,
-            [D.H1_HDR_NAME_CONN]: D.H1_HDR_VALUE_CONNECTION,
-            [D.H1_HDR_NAME_WS_ACCEPT]: acceptHash,
+            [cL.H1_HDR_NAME_UPGRADE]: cL.H1_HDR_VALUE_UPGRADE,
+            [cL.H1_HDR_NAME_CONN]: cL.H1_HDR_VALUE_CONNECTION,
+            [cL.H1_HDR_NAME_WS_ACCEPT]: acceptHash,
         };
 
         if (opts.subProtocol) {
 
-            header[D.H1_HDR_NAME_WS_PROTOCOL] = opts.subProtocol;
+            header[cL.H1_HDR_NAME_WS_PROTOCOL] = opts.subProtocol;
         }
 
         opts.socket.write([
-            `HTTP/1.1 ${D.H1_STATUS_ACCEPTED}`,
+            `HTTP/1.1 ${cL.H1_STATUS_ACCEPTED}`,
             ...Object.entries(header).map(([k, v]) => `${k}: ${v as string}`),
             '\r\n'
         ].join('\r\n'));
@@ -116,7 +117,7 @@ class WsServer implements D.IServer {
         );
     }
 
-    public reject(opts: D.IRejectOptions): void {
+    public reject(opts: dL.IRejectOptions): void {
 
         const header: Http.OutgoingHttpHeaders = {
             ...(opts.headers ?? {}),
@@ -140,13 +141,13 @@ class WsServer implements D.IServer {
     }
 }
 
-export type IWsServerOptions = Partial<Pick<D.IServer, 'timeout' | 'frameReceiveMode' | 'maxMessageSize'>>;
+export type IWsServerOptions = Partial<Pick<dL.IServer, 'timeout' | 'frameReceiveMode' | 'maxMessageSize'>>;
 
-export function createServer(opts: IWsServerOptions = {}): D.IServer {
+export function createServer(opts: IWsServerOptions = {}): dL.IServer {
 
     return new WsServer(
-        opts.timeout ?? D.DEFAULT_TIMEOUT,
-        opts.maxMessageSize ?? D.DEFAULT_MAX_MESSAGE_SIZE,
-        opts.frameReceiveMode ?? D.EFrameReceiveMode.STANDARD,
+        opts.timeout ?? cL.DEFAULT_TIMEOUT,
+        opts.maxMessageSize ?? cL.DEFAULT_MAX_MESSAGE_SIZE,
+        opts.frameReceiveMode ?? cL.EFrameReceiveMode.STANDARD,
     );
 }

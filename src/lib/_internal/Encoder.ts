@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import * as D from './Decl';
-import * as E from './Errors';
+import * as cL from '../Constants';
+import * as eL from '../Errors';
 import { mask } from './MaskFn';
 
 export class WsFrameEncoder {
 
     public constructor(
-        public maxMessageSize: number = D.DEFAULT_MAX_MESSAGE_SIZE
+        public maxMessageSize: number = cL.DEFAULT_MAX_MESSAGE_SIZE
     ) {}
 
     public readonly mask = mask;
@@ -45,7 +45,7 @@ export class WsFrameEncoder {
     }
 
     public createHeader(
-        opcode: D.EOpcode,
+        opcode: cL.EOpcode,
         payloadSize: number,
         isFin: boolean,
         maskKey?: Buffer | number[] | null,
@@ -60,7 +60,7 @@ export class WsFrameEncoder {
 
         if ((maskKey?.length ?? 4) !== 4) {
 
-            throw new E.E_INVALID_CONFIG({ value: maskKey, field: 'maskKey' });
+            throw new eL.E_INVALID_CONFIG({ value: maskKey, field: 'maskKey' });
         }
 
         const MASKED_BITS = maskKey ? 0b1000_0000 : 0;
@@ -84,7 +84,7 @@ export class WsFrameEncoder {
                 break;
             }
             default:
-                throw new E.E_INVALID_PROTOCOL('Invalid size for payload', { payloadSize });
+                throw new eL.E_INVALID_PROTOCOL('Invalid size for payload', { payloadSize });
         }
 
         if (maskKey) {

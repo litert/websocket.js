@@ -18,14 +18,15 @@ import * as NodeNet from 'node:net';
 import * as NodeHttp from 'node:http';
 import * as NodeHttps from 'node:https';
 import * as NodeTLS from 'node:tls';
-import * as _ from './Utils';
-import * as D from './Decl';
-import * as E from './Errors';
-import { AbstractWsConnection } from './AbstractConnection';
+import * as _ from './_internal/Utils';
+import * as cL from './Constants';
+import type * as dL from './Decl';
+import * as eL from './Errors';
+import { AbstractWsConnection } from './_internal/AbstractConnection';
 
 type IRequestMaker = () => NodeHttp.ClientRequest;
 
-class WsClientConnection extends AbstractWsConnection implements D.IClient {
+class WsClientConnection extends AbstractWsConnection implements dL.IClient {
 
     private readonly _mkReq: IRequestMaker;
 
@@ -36,7 +37,7 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
         mkReq: IRequestMaker,
         secure: boolean,
         timeout: number,
-        frameReceiveMode?: D.EFrameReceiveMode,
+        frameReceiveMode?: cL.EFrameReceiveMode,
         maxMessageSize?: number,
     ) {
 
@@ -71,7 +72,7 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
 
                     socket.setTimeout(this._connectTimeout, (): void => {
 
-                        socket.destroy(new E.E_TIMEOUT());
+                        socket.destroy(new eL.E_TIMEOUT());
                     });
 
                     socket.once('error', (e) => {
@@ -83,43 +84,43 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
 
             req.on('upgrade', (res: NodeHttp.IncomingMessage, socket: NodeNet.Socket, head: Buffer) => {
 
-                if (res.headers[D.H1_HDR_NAME_UPGRADE] !== D.H1_HDR_VALUE_UPGRADE.toLowerCase()) {
+                if (res.headers[cL.H1_HDR_NAME_UPGRADE] !== cL.H1_HDR_VALUE_UPGRADE.toLowerCase()) {
 
                     res.destroy();
-                    reject(new E.E_HANDSHAKE_FAILED('Missing UPGRADE header'));
+                    reject(new eL.E_HANDSHAKE_FAILED('Missing UPGRADE header'));
                     return;
                 }
 
-                if (res.headers[D.H1_HDR_NAME_CONN]?.toLowerCase() !== D.H1_HDR_VALUE_CONNECTION.toLowerCase()) {
+                if (res.headers[cL.H1_HDR_NAME_CONN]?.toLowerCase() !== cL.H1_HDR_VALUE_CONNECTION.toLowerCase()) {
 
                     res.destroy();
-                    reject(new E.E_HANDSHAKE_FAILED('Missing CONNECTION header'));
+                    reject(new eL.E_HANDSHAKE_FAILED('Missing CONNECTION header'));
                     return;
                 }
 
-                if (!res.headers[D.H1_HDR_NAME_WS_ACCEPT]) {
+                if (!res.headers[cL.H1_HDR_NAME_WS_ACCEPT]) {
 
                     res.destroy();
                     reject(new Error('No accept response'));
-                    reject(new E.E_HANDSHAKE_FAILED('Missing SEC-WEBSOCKET-ACCEPT header'));
+                    reject(new eL.E_HANDSHAKE_FAILED('Missing SEC-WEBSOCKET-ACCEPT header'));
                     return;
                 }
 
-                const wsKey = req.getHeader(D.H1_HDR_NAME_WS_KEY);
+                const wsKey = req.getHeader(cL.H1_HDR_NAME_WS_KEY);
 
                 if (typeof wsKey !== 'string') {
 
                     res.destroy();
-                    reject(new E.E_HANDSHAKE_FAILED('Missing SEC-WEBSOCKET-KEY header in request'));
+                    reject(new eL.E_HANDSHAKE_FAILED('Missing SEC-WEBSOCKET-KEY header in request'));
                     return;
                 }
 
                 const hash = _.createAcceptHash(wsKey);
 
-                if (hash !== res.headers[D.H1_HDR_NAME_WS_ACCEPT]) {
+                if (hash !== res.headers[cL.H1_HDR_NAME_WS_ACCEPT]) {
 
                     res.destroy();
-                    reject(new E.E_HANDSHAKE_FAILED('SEC-WEBSOCKET-ACCEPT is mismatched with SEC-WEBSOCKET-KEY'));
+                    reject(new eL.E_HANDSHAKE_FAILED('SEC-WEBSOCKET-ACCEPT is mismatched with SEC-WEBSOCKET-KEY'));
                     return;
                 }
 
@@ -131,7 +132,7 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
             })
                 .on('close', () => {
 
-                    reject(new E.E_HANDSHAKE_FAILED('Connection closed'));
+                    reject(new eL.E_HANDSHAKE_FAILED('Connection closed'));
                 })
                 .on('error', (e) => {
 
@@ -142,8 +143,18 @@ class WsClientConnection extends AbstractWsConnection implements D.IClient {
     }
 }
 
+/**
+ * The handshake options for WebSocket client.
+ */
 export interface IClientHandshakeOptions {
 
+    /**
+     * The sub-protocols to be requested.
+     *
+     * If not specified, no sub-protocol will be requested.
+     * When the server can not recognize any of the requested sub-protocols,
+     * it might reject the handshake.
+     */
     subProtocols?: string[];
 }
 
@@ -159,39 +170,42 @@ function createClientHandshakeHeaders(opts: IClientHandshakeOptions = {}): NodeH
     const key = _.createRandomString(20);
 
     const headers: NodeHttp.OutgoingHttpHeaders = {
-        [D.H1_HDR_NAME_WS_KEY]: key,
-        [D.H1_HDR_NAME_UPGRADE]: D.H1_HDR_VALUE_UPGRADE,
-        [D.H1_HDR_NAME_CONN]: D.H1_HDR_VALUE_CONNECTION,
+        [cL.H1_HDR_NAME_WS_KEY]: key,
+        [cL.H1_HDR_NAME_UPGRADE]: cL.H1_HDR_VALUE_UPGRADE,
+        [cL.H1_HDR_NAME_CONN]: cL.H1_HDR_VALUE_CONNECTION,
     };
 
     if (opts.subProtocols) {
 
-        headers[D.H1_HDR_NAME_WS_PROTOCOL] = opts.subProtocols;
+        headers[cL.H1_HDR_NAME_WS_PROTOCOL] = opts.subProtocols;
     }
 
     return headers;
 }
 
-interface IWsConnectOptionsBase {
+/**
+ * The connection options for WebSocket client.
+ */
+export interface IWsConnectOptionsBase {
 
     /**
      * The timeout for connecting to the server.
      *
-     * @see D.DEFAULT_CONNECT_TIMEOUT
+     * @see cL.DEFAULT_CONNECT_TIMEOUT
      */
     connectTimeout?: number;
 
     /**
      * The mode of receiving frames.
      *
-     * @see D.EFrameReceiveMode.STANDARD
+     * @see cL.EFrameReceiveMode.STANDARD
      */
-    frameReceiveMode?: D.EFrameReceiveMode;
+    frameReceiveMode?: cL.EFrameReceiveMode;
 
     /**
      * The maximum size of each message.
      *
-     * @see D.DEFAULT_MAX_MESSAGE_SIZE
+     * @see cL.DEFAULT_MAX_MESSAGE_SIZE
      */
     maxMessageSize?: number;
 
@@ -217,11 +231,23 @@ interface IWsConnectOptionsBase {
 
 /**
  * The type for the options of secure WebSocket client.
+ * This type is the combination of `https.RequestOptions` and
+ * `IWsConnectOptionsBase`.
+ *
+ * @see {@link IWsConnectOptionsBase}
+ *
+ * @noInheritDoc
  */
 export interface IWssConnectOptions extends NodeHttps.RequestOptions, IWsConnectOptionsBase {}
 
 /**
  * The type for the options of plain WebSocket client.
+ * This type is the combination of `http.RequestOptions` and
+ * `IWsConnectOptionsBase`.
+ *
+ * @see {@link IWsConnectOptionsBase}
+ *
+ * @noInheritDoc
  */
 export interface IWsConnectOptions extends NodeHttp.RequestOptions, IWsConnectOptionsBase {}
 
@@ -236,7 +262,7 @@ export interface IWsConnectOptions extends NodeHttp.RequestOptions, IWsConnectOp
  * not process early data sent by server correctly if you use this method. And
  * this method will be removed in the future.
  */
-export async function wssConnect(opts: IWssConnectOptions): Promise<D.IClient> {
+export async function wssConnect(opts: IWssConnectOptions): Promise<dL.IClient> {
 
     const ret = createSecureClient(opts);
 
@@ -256,7 +282,7 @@ export async function wssConnect(opts: IWssConnectOptions): Promise<D.IClient> {
  * process early data sent by server correctly if you use this method. And this
  * method will be removed in the future.
  */
-export async function wsConnect(opts: IWsConnectOptions): Promise<D.IClient> {
+export async function wsConnect(opts: IWsConnectOptions): Promise<dL.IClient> {
 
     const ret = createClient(opts);
 
@@ -277,7 +303,7 @@ export async function wsConnect(opts: IWsConnectOptions): Promise<D.IClient> {
  *
  * @returns   The secure WebSocket client.
  */
-export function createSecureClient(opts: IWssConnectOptions): D.IClient {
+export function createSecureClient(opts: IWssConnectOptions): dL.IClient {
 
     opts.headers = opts.headers ? {
         ...(opts.headers ?? {}),
@@ -314,10 +340,10 @@ export function createSecureClient(opts: IWssConnectOptions): D.IClient {
     }
 
     return new WsClientConnection(
-        opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
+        opts.connectTimeout ?? cL.DEFAULT_CONNECT_TIMEOUT,
         () => NodeHttp.request(opts),
         false,
-        opts.timeout ?? D.DEFAULT_TIMEOUT,
+        opts.timeout ?? cL.DEFAULT_TIMEOUT,
         opts.frameReceiveMode,
         opts.maxMessageSize,
     );
@@ -335,7 +361,7 @@ export function createSecureClient(opts: IWssConnectOptions): D.IClient {
  *
  * @returns  The plain WebSocket client.
  */
-export function createClient(opts: IWsConnectOptions): D.IClient {
+export function createClient(opts: IWsConnectOptions): dL.IClient {
 
     opts.headers = opts.headers ? {
         ...(opts.headers ?? {}),
@@ -351,10 +377,10 @@ export function createClient(opts: IWsConnectOptions): D.IClient {
             const socketOpts: NodeNet.NetConnectOpts = opts.socketPath ? {
                 'port': undefined,
                 'host': undefined,
-                'timeout': opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
+                'timeout': opts.connectTimeout ?? cL.DEFAULT_CONNECT_TIMEOUT,
                 'path': opts.socketPath,
             } : {
-                'timeout': opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
+                'timeout': opts.connectTimeout ?? cL.DEFAULT_CONNECT_TIMEOUT,
                 'port': Number(connArgs.port ?? 80),
                 'host': connArgs.hostname ?? connArgs.host ?? 'localhost',
                 'path': undefined,
@@ -369,10 +395,10 @@ export function createClient(opts: IWsConnectOptions): D.IClient {
     }
 
     return new WsClientConnection(
-        opts.connectTimeout ?? D.DEFAULT_CONNECT_TIMEOUT,
+        opts.connectTimeout ?? cL.DEFAULT_CONNECT_TIMEOUT,
         () => NodeHttp.request(opts),
         false,
-        opts.timeout ?? D.DEFAULT_TIMEOUT,
+        opts.timeout ?? cL.DEFAULT_TIMEOUT,
         opts.frameReceiveMode,
         opts.maxMessageSize,
     );

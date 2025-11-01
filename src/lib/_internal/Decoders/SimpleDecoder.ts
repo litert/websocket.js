@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-import * as D from '../Decl';
-import * as E from '../Errors';
+import * as cL from '../../Constants';
+import type * as dL from '../../Decl';
+import * as eL from '../../Errors';
 import { mask } from '../MaskFn';
-import { WsSimpleMessage } from '../SimpleMessage';
+import { WsSimpleMessage } from '../../SimpleMessage';
 
 interface IFrameHeader {
 
     /**
      * The payload of each frame.
      */
-    opcode: D.EOpcode;
+    opcode: cL.EOpcode;
 
     /**
      * Is this the last frame of a frame?
@@ -48,7 +49,7 @@ enum EState {
     READING_PAYLOAD,
 }
 
-export class WsSimpleDecoder implements D.IDecoder {
+export class WsSimpleDecoder implements dL.IDecoder {
 
     /**
      * The current state of the decoder.
@@ -119,7 +120,7 @@ export class WsSimpleDecoder implements D.IDecoder {
 
         if (headerByte1 & 0b0111_0000) {
 
-            throw new E.E_INVALID_PROTOCOL('RSV1, RSV2, RSV3 must be 0');
+            throw new eL.E_INVALID_PROTOCOL('RSV1, RSV2, RSV3 must be 0');
         }
 
         const isMasked: boolean = !!(headerByte2 & 0b1000_0000);
@@ -149,9 +150,9 @@ export class WsSimpleDecoder implements D.IDecoder {
         const masked = (headerByte2 & 0b1000_0000) === 0b1000_0000;
         const frameSize = headerByte2 & 0b0111_1111;
 
-        if (D.EOpcode[opcode] === undefined) {
+        if (cL.EOpcode[opcode] === undefined) {
 
-            throw new E.E_INVALID_PROTOCOL('Unknown opcode');
+            throw new eL.E_INVALID_PROTOCOL('Unknown opcode');
         }
 
         this._frameHeader = {
@@ -160,24 +161,24 @@ export class WsSimpleDecoder implements D.IDecoder {
             length: frameSize,
         };
 
-        if (this._frameHeader.opcode !== D.EOpcode.CONTINUATION) {
+        if (this._frameHeader.opcode !== cL.EOpcode.CONTINUATION) {
 
             this._msg = new WsSimpleMessage(
-                D.EFrameReceiveMode.SIMPLE,
+                cL.EFrameReceiveMode.SIMPLE,
                 opcode,
                 []
             );
         }
         else if (!this._msg) {
 
-            throw new E.E_INVALID_PROTOCOL('Missing initial frame');
+            throw new eL.E_INVALID_PROTOCOL('Missing initial frame');
         }
 
         this._frameTotal += this._frameHeader.length;
 
         if (this._frameTotal > this.maxMessageSize) {
 
-            throw new E.E_MESSAGE_TOO_LARGE();
+            throw new eL.E_MESSAGE_TOO_LARGE();
         }
 
         let offset = 2;
@@ -191,7 +192,7 @@ export class WsSimpleDecoder implements D.IDecoder {
 
             if (bytes.readUInt16BE(offset) & 0b1111_1111_1110_0000) { // check if it's safe for javascript integer.
 
-                throw new E.E_MESSAGE_TOO_LARGE();
+                throw new eL.E_MESSAGE_TOO_LARGE();
             }
 
             this._frameHeader.length = bytes.readUInt32BE(offset) * 0x1_0000_0000 + bytes.readUInt32BE(offset + 4);
@@ -200,7 +201,7 @@ export class WsSimpleDecoder implements D.IDecoder {
 
         if (this.maxMessageSize < this._frameHeader.length) {
 
-            throw new E.E_MESSAGE_TOO_LARGE();
+            throw new eL.E_MESSAGE_TOO_LARGE();
         }
 
         if (masked) {
@@ -209,11 +210,11 @@ export class WsSimpleDecoder implements D.IDecoder {
         }
     }
 
-    public decode(buf: Buffer): D.ISimpleMessage[] {
+    public decode(buf: Buffer): dL.ISimpleMessage[] {
 
         let offset = 0;
 
-        const ret: D.ISimpleMessage[] = [];
+        const ret: dL.ISimpleMessage[] = [];
 
         while (offset < buf.byteLength) {
 

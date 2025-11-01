@@ -1,6 +1,6 @@
 {
   "name": "@litert/websocket",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "The websocket protocol library for LiteRT.",
   "main": "lib/index.js",
   "scripts": {
@@ -36,6 +36,9 @@
     "@types/node": "^24.7.0",
     "husky": "^9.1.7",
     "serve": "^14.2.5",
+    "typedoc-plugin-markdown": "^4.6.4",
+    "typedoc-plugin-no-inherit": "^1.6.1",
+    "typedoc-vitepress-theme": "^1.1.2",
     "typescript": "^5.9.3"
   },
   "engines": {

@@ -20,18 +20,32 @@ type IErrorContext = Record<string, any>;
 
 /**
  * The error class for websocket.
+ *
+ * @noInheritDoc
  */
 export abstract class WsError extends Error {
+
+    /**
+     * The context information for the error.
+     */
+    public readonly context: IErrorContext;
+
+    /**
+     * The origin object for the error.
+     */
+    public readonly origin: unknown;
 
     public constructor(
         name: string,
         message: string,
-        public readonly context: IErrorContext,
-        public readonly origin: unknown
+        context: IErrorContext,
+        origin: unknown
     ) {
 
         super(message);
         this.name = name;
+        this.context = context;
+        this.origin = origin;
     }
 }
 

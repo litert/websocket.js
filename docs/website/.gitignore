@@ -1,0 +1,6 @@
+/.vitepress/.cache
+/.vitepress/dist/
+/.vitepress/.temp/
+/api/
+/guides/
+*.tgz

@@ -16,7 +16,7 @@
 
 import type * as $Net from 'node:net';
 import { AbstractWsConnection } from './AbstractConnection';
-import { EFrameReceiveMode } from './Decl';
+import type * as cL from '../Constants';
 
 export class WsServerConnection extends AbstractWsConnection {
 
@@ -24,7 +24,7 @@ export class WsServerConnection extends AbstractWsConnection {
         socket: $Net.Socket,
         tls: boolean,
         timeout: number,
-        frameReceiveMode?: EFrameReceiveMode,
+        frameReceiveMode?: cL.EFrameReceiveMode,
         maxMessageSize?: number,
         earlyDataPayload: Buffer | null = null,
     ) {

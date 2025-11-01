@@ -1,9 +1,26 @@
-import * as _ from './Utils';
-import * as D from './Decl';
-import { WsFrameEncoder } from './Encoder';
-import * as E from './Errors';
+/**
+ * Copyright 2025 Angus.Fenying <fenying@litert.org>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import type * as $Net from 'node:net';
 import { Writable, WritableOptions } from 'node:stream';
+import * as _ from './Utils';
+import type * as dL from '../Decl';
+import * as cL from '../Constants';
+import * as eL from '../Errors';
+import { WsFrameEncoder } from './Encoder';
 
 const EMPTY_BUFFER = Buffer.allocUnsafe(0);
 
@@ -27,7 +44,7 @@ export class WsFrameWriter {
 
         if (this._socket) {
 
-            throw new E.E_INTERNAL_ERROR({
+            throw new eL.E_INTERNAL_ERROR({
                 reason: 'The socket has been set already.',
             });
         }
@@ -49,15 +66,15 @@ export class WsFrameWriter {
      * @returns Return false if the socket buffer is full, needs to wait for draining.
      */
     public writeArray(
-        opcode: D.EOpcode,
+        opcode: cL.EOpcode,
         isFin: boolean,
         payload: Array<Buffer | string>,
-        callback: D.IErrorCallback
+        callback: dL.IErrorCallback
     ): boolean {
 
         if (!this._socket?.writable) {
 
-            callback(new E.E_CONN_LOST());
+            callback(new eL.E_CONN_LOST());
             return false;
         }
 
@@ -110,19 +127,19 @@ export class WsFrameWriter {
      * @returns Return false if the socket buffer is full, needs to wait for draining.
      */
     public write(
-        opcode: D.EOpcode,
+        opcode: cL.EOpcode,
         isFin: boolean,
         payload: Buffer | string,
-        callback: D.IErrorCallback
+        callback: dL.IErrorCallback
     ): boolean {
 
         if (!this._socket?.writable) {
 
             if (callback) {
-                callback(new E.E_CONN_LOST());
+                callback(new eL.E_CONN_LOST());
             }
             else {
-                throw new E.E_CONN_LOST();
+                throw new eL.E_CONN_LOST();
             }
 
             return false;
@@ -155,12 +172,12 @@ export class WsFrameWriter {
     }
 }
 
-export class WsMessageWriter extends Writable implements D.IMessageWriter {
+export class WsMessageWriter extends Writable implements dL.IMessageWriter {
 
     private _sentBytes = 0;
 
     public constructor(
-        public readonly opcode: D.EOpcode,
+        public readonly opcode: cL.EOpcode,
         public readonly maxMessageSize: number,
         protected readonly _writer: WsFrameWriter,
         opts?: WritableOptions,
@@ -173,19 +190,19 @@ export class WsMessageWriter extends Writable implements D.IMessageWriter {
     public override _write(
         chunk: Buffer | string,
         _encoding: BufferEncoding,
-        callback: D.IErrorCallback
+        callback: dL.IErrorCallback
     ): void {
 
         const len = Buffer.byteLength(chunk);
 
         if (this._sentBytes + len > this.maxMessageSize) {
 
-            callback(new E.E_MESSAGE_TOO_LARGE());
+            callback(new eL.E_MESSAGE_TOO_LARGE());
             return;
         }
 
         this._writer.write(
-            this._sentBytes === 0 ? this.opcode : D.EOpcode.CONTINUATION,
+            this._sentBytes === 0 ? this.opcode : cL.EOpcode.CONTINUATION,
             false,
             chunk,
             callback
@@ -195,10 +212,10 @@ export class WsMessageWriter extends Writable implements D.IMessageWriter {
     }
 
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    public override _final(callback: D.IErrorCallback): void {
+    public override _final(callback: dL.IErrorCallback): void {
 
         this._writer.write(
-            this._sentBytes === 0 ? this.opcode : D.EOpcode.CONTINUATION,
+            this._sentBytes === 0 ? this.opcode : cL.EOpcode.CONTINUATION,
             true,
             EMPTY_BUFFER,
             callback

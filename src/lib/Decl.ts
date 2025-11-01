@@ -20,120 +20,30 @@ import type * as Tls from 'node:tls';
 import type * as Http from 'node:http';
 import type * as Net from 'node:net';
 import type { Readable, Writable, WritableOptions } from 'node:stream';
+import type * as cL from './Constants';
 
-export enum ECloseReason {
-
-    /**
-     * Normally close.
-     */
-    BYE = 1000,
-
-    /**
-     * The endpoint is going away.
-     */
-    GOING_AWAY = 1001,
-
-    /**
-     * Protocol error.
-     */
-    PROTOCOL_ERROR = 1002,
-
-    /**
-     * Unsupported data.
-     */
-    UNSUPPORTED_DATA = 1003,
-
-    /**
-     * Reserved, do not use.
-     * @deprecated
-     */
-    RESERVED = 1004,
-
-    /**
-     * No status code was present.
-     */
-    NO_STATUS = 1005,
-
-    /**
-     * Abnormal closure, no further detail available.
-     */
-    ABNORMAL = 1006,
-
-    /**
-     * Invalid frame payload data.
-     */
-    INVALID_PAYLOAD = 1007,
-
-    /**
-     * Policy violation.
-     */
-    POLICY_VIOLATION = 1008,
-
-    /**
-     * Message too big.
-     */
-    MESSAGE_TOO_BIG = 1009,
-
-    /**
-     * Missing required protocol extension.
-     */
-    MISSING_EXTENSION = 1010,
-
-    /**
-     * Internal server error.
-     */
-    INTERNAL_ERROR = 1011,
-}
-
-export enum EOpcode {
-
-    CONTINUATION = 0x0,
-    TEXT = 0x1,
-    BINARY = 0x2,
-    CLOSE = 0x8,
-    PING = 0x9,
-    PONG = 0xA,
-}
-
-export enum EFrameReceiveMode {
-
-    /**
-     * At this mode, when starts receiving a new message, a `IMessageReadStream` object will be
-     * created, and the `message` events of `IWebSocket` objects will be triggered with it.
-     */
-    STANDARD,
-
-    /**
-     * At this mode, all messages will be received as a `ISimpleMessage` object, without
-     * `CONTINUATION` frames supported and they will be refused.
-     *
-     * > **WARNING: Watch out the compatibility to the remote side.**
-     */
-    LITE,
-
-    /**
-     * At this mode, all messages will be received as a `ISimpleMessage` object, with `CONTINUATION`
-     * frames supported.
-     */
-    SIMPLE,
-}
-
+/**
+ * The base interface of received websocket message.
+ */
 export interface IMessage {
 
     /**
      * The mode of receiving these frames.
      */
-    mode: EFrameReceiveMode;
+    mode: cL.EFrameReceiveMode;
 
     /**
      * The type of this message.
      */
-    opcode: EOpcode;
+    opcode: cL.EOpcode;
 }
 
+/**
+ * The interface of simple websocket message, which contains the full message data.
+ */
 export interface ISimpleMessage extends IMessage {
 
-    mode: EFrameReceiveMode.LITE | EFrameReceiveMode.SIMPLE;
+    mode: cL.EFrameReceiveMode.LITE | cL.EFrameReceiveMode.SIMPLE;
 
     /**
      * The full data of this message.
@@ -141,6 +51,9 @@ export interface ISimpleMessage extends IMessage {
     data: Buffer[];
 }
 
+/**
+ * The interface of websocket server.
+ */
 export interface IServer {
 
     /**
@@ -168,7 +81,7 @@ export interface IServer {
      *
      * @default EFrameReceiveMode.STANDARD
      */
-    readonly frameReceiveMode: EFrameReceiveMode;
+    readonly frameReceiveMode: cL.EFrameReceiveMode;
 
     /**
      * Accept the websocket request.
@@ -186,6 +99,9 @@ export interface IServer {
     isWebSocketRequest(req: Http.IncomingMessage): boolean;
 }
 
+/**
+ * The interface of websocket client.
+ */
 export interface IClient extends IWebSocket {
 
     /**
@@ -224,6 +140,9 @@ export interface IClient extends IWebSocket {
     connect(): Promise<void>;
 }
 
+/**
+ * The options for `IServer.accept()` method.
+ */
 export interface IAcceptOptions {
 
     /**
@@ -233,6 +152,10 @@ export interface IAcceptOptions {
 
     /**
      * The TCP socket for the websocket connection.
+     *
+     * For the `socket` parameter from `upgrade` event of `http.Server` object,
+     * you may need to force-cast it to `Net.Socket` type (although it is actually
+     * a `Net.Socket` object indeed), because its type is not equitable in TypeScript.
      */
     'socket': Net.Socket;
 
@@ -252,13 +175,18 @@ export interface IAcceptOptions {
     'subProtocol'?: string;
 
     /**
-     * The payload data sent immediately after the websocket handshake request,
-     * without waiting for the reply of the handshake response,
+     * The third parameter of the `upgrade` event of `http.Server` object.
+     *
+     * It's the payload data sent immediately after the websocket handshake
+     * request, without waiting for the reply of the handshake response,
      * which could make it feels like 0-RTT.
      */
     'clientEarlyDataPayload'?: Buffer | null;
 }
 
+/**
+ * The options for `IServer.reject()` method.
+ */
 export interface IRejectOptions {
 
     /**
@@ -268,6 +196,10 @@ export interface IRejectOptions {
 
     /**
      * The TCP socket for the websocket connection.
+     *
+     * For the `socket` parameter from `upgrade` event of `http.Server` object,
+     * you may need to force-cast it to `Net.Socket` type (although it is actually
+     * a `Net.Socket` object indeed), because its type is not equitable in TypeScript.
      */
     'socket': Net.Socket;
 
@@ -289,21 +221,23 @@ export interface IRejectOptions {
     'body'?: string | Buffer;
 }
 
-export interface IWebSocketHandshakeControl {
-
-    accept(opts?: IAcceptOptions): IWebSocket;
-
-    reject(opts: IRejectOptions): void;
-}
-
+/**
+ * The interface of websocket message reader, implements `Readable` stream.
+ *
+ * @noInheritDoc
+ */
 export interface IMessageReadStream extends Readable, IMessage {
 
-    readonly mode: EFrameReceiveMode.STANDARD;
+    /**
+     * The mode of receiving frames.
+     * Only and always for `EFrameReceiveMode.STANDARD`.
+     */
+    readonly mode: cL.EFrameReceiveMode.STANDARD;
 
     /**
      * The opcode of this message.
      */
-    readonly opcode: EOpcode;
+    readonly opcode: cL.EOpcode;
 
     /**
      * Read all data in this message as a string.
@@ -321,14 +255,22 @@ export interface IMessageReadStream extends Readable, IMessage {
     toBufferArray(): Promise<Buffer[]>;
 }
 
+/**
+ * The interface of websocket message writer, implements `Writable` stream.
+ *
+ * @noInheritDoc
+ */
 export interface IMessageWriter extends Writable {
 
     /**
      * The type of this message.
      */
-    readonly opcode: EOpcode;
+    readonly opcode: cL.EOpcode;
 }
 
+/**
+ * The interface of websocket message decoder.
+ */
 export interface IDecoder {
 
     /**
@@ -336,13 +278,30 @@ export interface IDecoder {
      */
     readonly maxMessageSize: number;
 
+    /**
+     * Decode a chunk of data, and return the decoded messages.
+     *
+     * If tail of the chunk is an incomplete frame, it will be buffered inside
+     * the decoder, and used in the next `decode()` call.
+     *
+     * @param chunk     The chunk of data to decode.
+     */
     decode(chunk: Buffer): Array<IMessageReadStream | IMessage>;
 
+    /**
+     * Reset the internal state of the decoder, clearing all buffered data.
+     */
     reset(): void;
 }
 
+/**
+ * The callback type for error handling.
+ */
 export type IErrorCallback = (e?: Error | null) => void;
 
+/**
+ * The base interface of websocket connection, implements both readable and writable stream.
+ */
 export interface IWebSocket {
 
     /**
@@ -355,7 +314,7 @@ export interface IWebSocket {
      *
      * @default EFrameReceiveMode.STANDARD
      */
-    readonly frameReceiveMode: EFrameReceiveMode;
+    readonly frameReceiveMode: cL.EFrameReceiveMode;
 
     /**
      * Tell whether the connection is writable.
@@ -493,7 +452,7 @@ export interface IWebSocket {
      * > - Don't forget to call `end()` method of the writer to send out the last frame of the message.
      * > - Don't send any other messages out of the writer before calling its `end()` method.
      */
-    createMessageWriter(opcode: EOpcode, opts?: WritableOptions): IMessageWriter;
+    createMessageWriter(opcode: cL.EOpcode, opts?: WritableOptions): IMessageWriter;
 
     /**
      * Send a text message to remote-side, in a single TEXT message.
@@ -543,41 +502,10 @@ export interface IWebSocket {
      * @param reason    The reason code for closing. [default: `ECloseReason.BYE`]
      * @returns `true` if the data is flushed to kernel buffer completely, otherwise `false`.
      */
-    end(reason?: ECloseReason, callback?: IErrorCallback): boolean;
+    end(reason?: cL.ECloseReason, callback?: IErrorCallback): boolean;
 
     /**
      * Close the socket and disable all ops on this socket.
      */
     destroy(): void;
 }
-
-/**
- * The maximum size of each message body.
- */
-export const DEFAULT_MAX_MESSAGE_SIZE = 0x400_0000; // 64 MiB
-
-/**
- * The default timeout for established connections.
- */
-export const DEFAULT_TIMEOUT = 60_000;
-
-/**
- * The default timeout for establishing connections.
- */
-export const DEFAULT_CONNECT_TIMEOUT = 30_000;
-
-export const H1_HDR_NAME_WS_KEY = 'sec-websocket-key';
-
-export const H1_HDR_NAME_WS_PROTOCOL = 'sec-websocket-protocol';
-
-export const H1_HDR_NAME_WS_ACCEPT = 'sec-websocket-accept';
-
-export const H1_HDR_NAME_CONN = 'connection';
-
-export const H1_HDR_VALUE_CONNECTION = 'Upgrade';
-
-export const H1_HDR_NAME_UPGRADE = 'upgrade';
-
-export const H1_HDR_VALUE_UPGRADE = 'websocket';
-
-export const H1_STATUS_ACCEPTED = 101;

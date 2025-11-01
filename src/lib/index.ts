@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
+export type * from './Decl';
 export * from './Errors';
 export * from './Server';
 export * from './Client';
 export * from './SimpleMessage';
 export * from './MessageReadStream';
-export * from './Decl';
+export * from './Constants';

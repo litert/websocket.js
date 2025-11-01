@@ -14,16 +14,17 @@
  * limitations under the License.
  */
 
-import * as D from './Decl';
 import { Readable } from 'node:stream';
-import * as E from './Errors';
+import * as cL from './Constants';
+import type * as dL from './Decl';
+import * as eL from './Errors';
 
-export class WsMessageReadStream extends Readable implements D.IMessageReadStream {
+export class WsMessageReadStream extends Readable implements dL.IMessageReadStream {
 
-    public readonly mode = D.EFrameReceiveMode.STANDARD;
+    public readonly mode = cL.EFrameReceiveMode.STANDARD;
 
     public constructor(
-        public readonly opcode: D.EOpcode,
+        public readonly opcode: cL.EOpcode,
     ) {
 
         super();
@@ -39,7 +40,7 @@ export class WsMessageReadStream extends Readable implements D.IMessageReadStrea
 
         if (this.readableEnded) {
 
-            throw new E.E_FRAME_ENDED();
+            throw new eL.E_FRAME_ENDED();
         }
 
         return new Promise<string>((resolve, reject) => {
@@ -60,7 +61,7 @@ export class WsMessageReadStream extends Readable implements D.IMessageReadStrea
 
         if (this.readableEnded) {
 
-            throw new E.E_FRAME_ENDED();
+            throw new eL.E_FRAME_ENDED();
         }
 
         return new Promise<Buffer>((resolve, reject) => {
@@ -79,7 +80,7 @@ export class WsMessageReadStream extends Readable implements D.IMessageReadStrea
 
         if (this.readableEnded) {
 
-            throw new E.E_FRAME_ENDED();
+            throw new eL.E_FRAME_ENDED();
         }
 
         const buf: Buffer[] = [];
