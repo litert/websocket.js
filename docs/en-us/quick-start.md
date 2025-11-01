@@ -19,6 +19,10 @@ the underlying HTTP/HTTPS server. Here's a simple example of creating a WebSocke
 server using `node:http`:
 
 ```ts
+import * as NodeHttp from 'node:http';
+import * as NodeTimers from 'node:timers/promises';
+import * as LibWS from '@litert/websocket';
+
 // create the HTTP server
 const httpServer = NodeHttp.createServer(function(req, resp): void {
 
